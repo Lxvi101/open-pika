@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { parseSettings } from "@/generation/catalog";
-import type { ModelEntry, Surface } from "@/generation/catalog";
+import type { MediaItem, ModelEntry, Surface } from "@/generation/catalog";
+import { estimateCost, formatCost } from "@/generation/cost";
+import { durationOf, planeOf } from "@/generation/plane";
 import { MAX_BATCH, useActive } from "@/generation/stores/active";
 import { PROMPT_STORES } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
@@ -112,6 +114,23 @@ export function Composer({
   const counts = native ? native.counts : STUDIO_COUNTS;
   const batchValue = native ? Number(values[native.key]) || counts[0]! : batch;
   const settingKeys = Object.keys(model.settings).filter((key) => key !== native?.key);
+
+  /* Priced from the very request a press would send, so the figure moves with
+     every dial. The studio's own batch is that many requests; a model's own
+     count is one request asking for that many results. */
+  const lengths = useClipLengths(tray.items);
+  const modelSettings = settings.byModel[model.id];
+  const estimate = useMemo(() => {
+    const items = tray.items.map((item) => ({
+      ...item,
+      duration: item.duration ?? lengths[item.url],
+    }));
+    const plane = planeOf(model, prompt.text, items, modelSettings ?? {});
+    const press = native
+      ? { requests: 1, outputs: batchValue }
+      : { requests: model.surface === "text" ? 1 : batch, outputs: 1 };
+    return estimateCost(plane, press);
+  }, [model, prompt.text, tray.items, lengths, modelSettings, native, batchValue, batch]);
 
   function setBatchValue(next: number) {
     if (!native) {
@@ -384,6 +403,19 @@ export function Composer({
               </div>
 
               <span className="ohf-generate-slot ohf-tip ohf-tip--end" data-tip={generateTip}>
+                {estimate && (
+                  <span
+                    className="ohf-cost"
+                    aria-label={`Estimated cost: ${formatCost(estimate)}`}
+                    title={
+                      estimate.kind === "total"
+                        ? "Estimated cost of this press, from the platform's published prices"
+                        : "Billed by usage the platform counts after the run"
+                    }
+                  >
+                    {formatCost(estimate)}
+                  </span>
+                )}
                 <button
                   type="button"
                   className="ohf-generate"
@@ -411,6 +443,27 @@ export function Composer({
       </div>
     </div>
   );
+}
+
+/* Lengths of the attached clips and tracks, read as they arrive: a tool that
+   bills by the length of its input cannot be priced without them. */
+function useClipLengths(items: readonly MediaItem[]): Record<string, number> {
+  const [lengths, setLengths] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let live = true;
+    for (const item of items) {
+      if (item.role !== "video" && item.role !== "audio") continue;
+      void durationOf(item.url, item.role).then((seconds) => {
+        if (live && seconds) {
+          setLengths((prev) => (prev[item.url] === seconds ? prev : { ...prev, [item.url]: seconds }));
+        }
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [items]);
+  return lengths;
 }
 
 /* Results per press. Every unit is a real generation, so the number is a

@@ -1910,6 +1910,16 @@
   margin-left: auto;
   flex-shrink: 0;
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* What the press is expected to cost, read just before it is made. */
+.ohf-cost {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ohf-generate {
   height: 38px;
@@ -3658,7 +3668,7 @@ a.ohf-btn-solid {
     margin-left: 0;
   }
   .ohf-generate {
-    width: 100%;
+    flex: 1;
     height: 44px;
   }
   .ohf-generate-glyph {

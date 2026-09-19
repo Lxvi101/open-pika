@@ -9,6 +9,8 @@
     "brand": "node scripts/build-brand-assets.mjs",
     "check:catalog": "tsx scripts/check-catalog.ts",
     "sync:catalog": "node scripts/sync-catalog.mjs",
+    "sync:pricing": "node scripts/build-pricing.mjs",
+    "check:cost": "tsx scripts/check-cost.ts",
     "typecheck": "tsc --noEmit",
     "check:requests": "tsx scripts/check-requests.ts"
   },
