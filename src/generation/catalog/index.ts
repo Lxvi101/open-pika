@@ -1,81 +1,63 @@
-import { dop } from "./dop";
-import { flux2 } from "./flux-2";
-import { flux3 } from "./flux-3";
-import { grokImagine2 } from "./grok-imagine-2";
-import { grokImagineVideo15 } from "./grok-imagine-video-1.5";
-import { happyHorse1 } from "./happy-horse-1";
-import { happyHorse11 } from "./happy-horse-1.1";
-import { ideogram4 } from "./ideogram-4";
-import { kling25 } from "./kling-2.5";
-import { kling26 } from "./kling-2.6";
-import {
-  kling34k,
-  kling3MotionPro,
-  kling3MotionStd,
-  kling3Pro,
-  kling3Std,
-  kling3Turbo,
-} from "./kling-3";
-import { klingO1 } from "./kling-o1";
-import { klingO3 } from "./kling-o3";
-import { ltx25Fast } from "./ltx-2.5-fast";
-import { ltx25Pro } from "./ltx-2.5-pro";
-import { minimaxH3 } from "./minimax-h3";
-import { minimaxHailuo23 } from "./minimax-hailuo-2.3";
+import { bytedanceAudio } from "./audio/bytedance";
+import { elevenlabsAudio } from "./audio/elevenlabs";
+import { googleAudio } from "./audio/google";
+import { klingAudio } from "./audio/kling";
+import { minimaxAudio } from "./audio/minimax";
+import { openaiAudio } from "./audio/openai";
+import { pikaAudio } from "./audio/pika";
+import { soniloAudio } from "./audio/sonilo";
+import { bytedanceImage } from "./image/bytedance";
+import { googleImage } from "./image/google";
+import { ideogramImage } from "./image/ideogram";
+import { metaImage } from "./image/meta";
+import { openaiImage } from "./image/openai";
+import { recraftImage } from "./image/recraft";
+import { topazImage } from "./image/topaz";
+import { xaiImage } from "./image/x-ai";
 import { parseSettings } from "./parse-settings";
-import { pixverse6 } from "./pixverse-6";
-import { qwenImage3 } from "./qwen-image-3";
-import { recraft41 } from "./recraft-4.1";
-import { seedance2, seedance2Fast, seedance2Mini } from "./seedance-2";
-import { seedance25, seedance25Edit, seedance25Extend } from "./seedance-2.5";
-import { soul2, soulCinema } from "./soul";
+import { languageModels } from "./text/llm";
 import type { ModelEntry } from "./types";
-import { wan26 } from "./wan-2.6";
-import { wan27 } from "./wan-2.7";
-import { wan3 } from "./wan-3";
-import { wan3Prime } from "./wan-3-prime";
-import { zImageTurbo } from "./z-image-turbo";
+import { alibabaVideo } from "./video/alibaba";
+import { blackForestLabsVideo } from "./video/black-forest-labs";
+import { bytedanceVideo } from "./video/bytedance";
+import { googleVideo } from "./video/google";
+import { klingVideo } from "./video/kling";
+import { minimaxVideo } from "./video/minimax";
+import { pikaVideo } from "./video/pika";
+import { topazVideo } from "./video/topaz";
+import { xaiVideo } from "./video/x-ai";
 
+/* Picker order within a surface: the house models lead, then the rest. */
 export const MODELS: readonly ModelEntry[] = [
-  soul2,
-  soulCinema,
-  seedance25,
-  seedance25Edit,
-  seedance25Extend,
-  seedance2,
-  seedance2Fast,
-  seedance2Mini,
-  kling3Turbo,
-  kling3Std,
-  kling3Pro,
-  kling34k,
-  kling3MotionStd,
-  kling3MotionPro,
-  flux2,
-  grokImagine2,
-  ideogram4,
-  recraft41,
-  qwenImage3,
-  zImageTurbo,
-  wan3,
-  wan3Prime,
-  wan27,
-  wan26,
-  flux3,
-  minimaxH3,
-  minimaxHailuo23,
-  happyHorse1,
-  happyHorse11,
-  kling26,
-  kling25,
-  klingO3,
-  klingO1,
-  ltx25Fast,
-  ltx25Pro,
-  grokImagineVideo15,
-  pixverse6,
-  dop,
+  ...pikaVideo,
+  ...bytedanceVideo,
+  ...googleVideo,
+  ...klingVideo,
+  ...alibabaVideo,
+  ...minimaxVideo,
+  ...blackForestLabsVideo,
+  ...xaiVideo,
+  ...topazVideo,
+  ...bytedanceImage,
+  ...googleImage,
+  ...openaiImage,
+  ...ideogramImage,
+  ...recraftImage,
+  ...xaiImage,
+  ...metaImage,
+  ...topazImage,
+  ...pikaAudio,
+  ...elevenlabsAudio,
+  ...googleAudio,
+  ...minimaxAudio,
+  ...soniloAudio,
+  ...klingAudio,
+  ...bytedanceAudio,
+  ...openaiAudio,
+  ...languageModels,
 ];
+
+export const DEFAULT_MODEL = "seedance-2.5";
 
 export function getModel(id: string): ModelEntry {
   const model = MODELS.find((entry) => entry.id === id);
@@ -83,5 +65,16 @@ export function getModel(id: string): ModelEntry {
   return model;
 }
 
-export type { GenerationPlane, MediaItem, MediaRole, ModelEntry, PlatformPaths, Surface } from "./types";
+export type {
+  ChatProtocol,
+  GenerationPlane,
+  MediaBinding,
+  MediaItem,
+  MediaRole,
+  ModelEntry,
+  Operation,
+  ParamSpec,
+  SettingField,
+  Surface,
+} from "./types";
 export { parseSettings };

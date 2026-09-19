@@ -23,10 +23,23 @@ export async function saveFile(url: string, name: string): Promise<boolean> {
   }
 }
 
+/** Words are already in hand, so saving them needs no read and cannot be
+    refused. */
+export function saveText(text: string, name: string): void {
+  const href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 60_000);
+}
+
+const FALLBACK_EXT = { image: "png", video: "mp4", audio: "mp3", text: "txt" } as const;
+
 /** A saved run has to be findable in a downloads folder six months later, so
     the name carries the prompt rather than the platform's request id. */
 export function fileNameFor(record: RunRecord, index: number): string {
-  const url = record.urls[0] ?? "";
+  const url = record.kind === "text" ? "" : (record.urls[0] ?? "");
   const ext = /\.([a-z0-9]{2,4})(?:[?#]|$)/i.exec(url)?.[1]?.toLowerCase();
   const slug =
     record.prompt
@@ -35,5 +48,5 @@ export function fileNameFor(record: RunRecord, index: number): string {
       .replace(/^-+|-+$/g, "")
       .slice(0, 44)
       .replace(/-+$/, "") || "run";
-  return `openhiggsfield-${slug}-${index + 1}.${ext ?? (record.kind === "video" ? "mp4" : "png")}`;
+  return `openpika-${slug}-${index + 1}.${ext ?? FALLBACK_EXT[record.kind]}`;
 }

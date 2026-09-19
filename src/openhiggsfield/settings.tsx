@@ -3,12 +3,7 @@
 import type { ModelEntry } from "@/generation/catalog";
 import { useSettings } from "@/generation/stores/settings";
 
-import {
-  ratioBox,
-  settingLabel,
-  settingPillLabel,
-  settingValueLabel,
-} from "./data";
+import { ratioBox, settingLabel, settingPillLabel, settingValueLabel } from "./data";
 import { AudioIcon, ClockIcon, FormatIcon, GemIcon } from "./icons";
 import { Field, OptionList, Slider } from "./ui";
 
@@ -81,6 +76,26 @@ export function SettingPill({
     );
   }
 
+  /* A text setting has no value short enough for a pill, so the pill carries
+     its name and says only whether anything has been written. */
+  if (field.type === "text") {
+    const written = typeof value === "string" && value.trim().length > 0;
+    return (
+      <button
+        type="button"
+        className="ohf-ctl ohf-tip"
+        data-tip={written ? String(value).trim().slice(0, 80) : `${label} — not set`}
+        data-set={written}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`${label} — ${written ? "set" : "not set"}`}
+        onClick={(event) => onOpen(event.currentTarget)}
+      >
+        <span className="ohf-ctl-value">{settingPillLabel(settingKey)}</span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -118,8 +133,40 @@ export function SettingPopover({
 
   const label = settingLabel(settingKey);
 
+  if (field.type === "text") {
+    const value = typeof values[settingKey] === "string" ? (values[settingKey] as string) : "";
+    const shared = {
+      className: "ohf-setting-text",
+      value,
+      placeholder: field.placeholder,
+      maxLength: field.maxLength,
+      "aria-label": label,
+      autoFocus: true,
+    };
+    return (
+      <div className="ohf-popover ohf-popover--setting" role="dialog" aria-label={label}>
+        <Field label={label}>
+          {field.multiline ? (
+            <textarea
+              {...shared}
+              rows={5}
+              onChange={(event) => settings.set(model.id, { [settingKey]: event.target.value })}
+            />
+          ) : (
+            <input
+              {...shared}
+              type="text"
+              onChange={(event) => settings.set(model.id, { [settingKey]: event.target.value })}
+            />
+          )}
+        </Field>
+      </div>
+    );
+  }
+
   if (field.type === "enum") {
-    const value = typeof values[settingKey] === "string" ? (values[settingKey] as string) : field.default;
+    const value =
+      typeof values[settingKey] === "string" ? (values[settingKey] as string) : field.default;
     return (
       <div
         className="ohf-popover ohf-popover--setting ohf-popover--list"
@@ -141,7 +188,8 @@ export function SettingPopover({
     );
   }
 
-  const value = typeof values[settingKey] === "number" ? (values[settingKey] as number) : field.default;
+  const value =
+    typeof values[settingKey] === "number" ? (values[settingKey] as number) : field.default;
   return (
     <div className="ohf-popover ohf-popover--setting ohf-scroll" role="dialog" aria-label={label}>
       <Field label={label} value={settingValueLabel(settingKey, value)}>

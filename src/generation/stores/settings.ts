@@ -15,7 +15,10 @@ export const useSettings = create<SettingsState>()(
       set: (modelId, patch) =>
         set((state) => {
           const current = state.byModel[modelId];
-          if (current && Object.entries(patch).every(([key, value]) => Object.is(current[key], value))) {
+          if (
+            current &&
+            Object.entries(patch).every(([key, value]) => Object.is(current[key], value))
+          ) {
             return state;
           }
           return {
@@ -26,6 +29,10 @@ export const useSettings = create<SettingsState>()(
           };
         }),
     }),
-    { name: "openhiggsfield.settings.v1", storage: browserStorage(), partialize: (state) => ({ byModel: state.byModel }) },
+    {
+      name: "openhiggsfield.settings.v2",
+      storage: browserStorage(),
+      partialize: (state) => ({ byModel: state.byModel }),
+    },
   ),
 );

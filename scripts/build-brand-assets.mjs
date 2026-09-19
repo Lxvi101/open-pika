@@ -1,9 +1,9 @@
 /* Builds every raster brand asset from the one mark geometry.
 
-   The mark is authored once as SVG (src/app/icon.svg for the favicon,
-   src/components/OpenHiggsfieldMark.tsx for the interface). Apple, the web app
-   manifest and Open Graph all need rasters, so this script draws the same
-   32-unit field in a headless Chromium and screenshots it at each size.
+   The mark is authored once as SVG (src/app/icon.svg for the favicon). Apple,
+   the web app manifest and Open Graph all need rasters, so this script draws
+   the same 32-unit field in a headless Chromium and screenshots it at each
+   size.
 
      node scripts/build-brand-assets.mjs
 
@@ -35,14 +35,19 @@ const markSvg = (size, opts) =>
 
 /* The plate edge is one unit — a true hairline — at favicon size. In the large
    rasters it has to stay a hairline, so there it scales as a fraction of a unit. */
-const roundedPlate = (size) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">
+const roundedPlate = (
+  size,
+) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">
   <rect width="32" height="32" rx="7.5" fill="${PLATE}"/>
   <rect x=".06" y=".06" width="31.88" height="31.88" rx="7.44" fill="none" stroke="rgba(255,255,255,0.11)" stroke-width=".12"/>
   ${brackets()}
 </svg>`;
 
 /** Full-bleed square: Apple and the maskable spec apply their own mask. */
-const bleedPlate = (size, scale) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">
+const bleedPlate = (
+  size,
+  scale,
+) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${size}" height="${size}">
   <rect width="32" height="32" fill="${PLATE}"/>
   <g transform="translate(16 16) scale(${scale}) translate(-16 -16)">${brackets()}</g>
 </svg>`;
@@ -69,14 +74,12 @@ function findChrome() {
 
   const found = candidates.find((path) => existsSync(path));
   if (found) return found;
-  throw new Error(
-    "No Chrome found. Install one, or set CHROME_BIN to a Chrome/Chromium binary.",
-  );
+  throw new Error("No Chrome found. Install one, or set CHROME_BIN to a Chrome/Chromium binary.");
 }
 
 const CHROME = findChrome();
 const ROOT = resolve(import.meta.dirname, "..");
-const WORK = mkdtempSync(join(tmpdir(), "openhiggsfield-brand-"));
+const WORK = mkdtempSync(join(tmpdir(), "openpika-brand-"));
 
 function shoot(out, html, width, height, { transparent = false } = {}) {
   const page = join(WORK, `${width}x${height}-${Math.abs(hash(out))}.html`);
@@ -167,10 +170,10 @@ const og = `<!doctype html><meta charset="utf-8">
 <div class="field">${markSvg(454, { stroke: 1.15, accent: "rgba(111,227,192,0.17)", ink: "rgba(255,255,255,0.085)" })}</div>
 <div class="band mark">${markSvg(58, { stroke: 2.5 })}</div>
 <div class="mid"><div class="band">
-  <h1>OpenHiggsfield AI</h1>
-  <div class="descriptor">Open source AI studio</div>
+  <h1>OpenPika</h1>
+  <div class="descriptor">Unofficial open-source Pika API studio</div>
   <div class="rule"></div>
-  <p>One prompt bar for image and video. Each model&rsquo;s own settings, and every finished run in one gallery.</p>
+  <p>One composer for video, image, audio and text. Each model&rsquo;s own settings, and every finished run in one gallery.</p>
 </div></div>
 <div class="grain"></div>`;
 

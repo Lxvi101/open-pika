@@ -1,20 +1,29 @@
 import type { MediaRole, ModelEntry, Surface } from "@/generation/catalog";
 
-export const SURFACES: readonly Surface[] = ["image", "video"];
+export const SURFACES: readonly Surface[] = ["video", "image", "audio", "text"];
 
 export const SURFACE_LABELS: Record<Surface, string> = {
   image: "Image",
   video: "Video",
+  audio: "Audio",
+  text: "Text",
 };
 
-/** What the gallery is scoped to. "assets" is every run, both surfaces;
-    "favorites" is every run the visitor kept, both surfaces. */
+/** What the gallery is scoped to. "assets" is every run, every surface;
+    "favorites" is every run the visitor kept, every surface. */
 export type GalleryView = Surface | "assets" | "favorites";
 
-/** Scopes that span both surfaces, so switching to them leaves the model alone. */
+/** Scopes that span every surface, so switching to them leaves the model alone. */
 export const CROSS_VIEWS = new Set<GalleryView>(["assets", "favorites"]);
 
-export const VIEWS: readonly GalleryView[] = ["image", "video", "assets", "favorites"];
+export const VIEWS: readonly GalleryView[] = [
+  "video",
+  "image",
+  "audio",
+  "text",
+  "assets",
+  "favorites",
+];
 
 export const VIEW_LABELS: Record<GalleryView, string> = {
   ...SURFACE_LABELS,
@@ -25,7 +34,12 @@ export const VIEW_LABELS: Record<GalleryView, string> = {
 export const PROMPT_PLACEHOLDERS: Record<Surface, string> = {
   image: "Describe the image — subject, style, light, lens…",
   video: "Describe the shot — subject, camera move, light, pacing…",
+  audio: "Describe the sound, or write the words to speak…",
+  text: "Ask anything…",
 };
+
+/* A tool that takes no words still shows the field, so it says why it is idle. */
+export const PROMPT_UNUSED = "This model takes no prompt — attach its input and generate";
 
 /* The pool the empty state draws from. Each line is a whole prompt — subject,
    light, lens or camera move — so a click loads something worth pressing
@@ -59,6 +73,25 @@ export const SAMPLES: Record<Surface, string[]> = {
     "Static wide of a train crossing a viaduct at dusk, lit windows, long lens compression",
     "Slow tilt down a glass tower facade to a busy crosswalk, overcast city light",
   ],
+  audio: [
+    "Warm lo-fi hip hop loop, dusty vinyl crackle, mellow Rhodes chords, 80 bpm",
+    "Heavy rain on a tin roof with distant rolling thunder, close and enveloping",
+    "Tense cinematic underscore, low strings swelling under a ticking clock motif",
+    "Footsteps on gravel approaching, a wooden door creaks open, then silence",
+    "Bright acoustic folk instrumental, fingerpicked guitar and brushed snare, morning light",
+    "Welcome aboard. Find a seat, settle in, and we will be under way in just a moment.",
+    "Retro arcade power-up: rising chiptune arpeggio with a sparkling finish",
+    "Slow ambient pad drifting through minor chords, deep sub swell, no percussion",
+    "Busy night market ambience — sizzling woks, overlapping chatter, a scooter passing",
+  ],
+  text: [
+    "Write a 30-second voiceover for a film about a lighthouse keeper's last night on duty",
+    "Turn this idea into a shot list with camera moves: a chef plating dessert in slow motion",
+    "Give me five distinct visual directions for a perfume ad, each as one image prompt",
+    "Write four lines of lyrics for a melancholic synth-pop chorus about leaving a city",
+    "Rewrite this prompt to be more cinematic: a dog running on a beach",
+    "Describe the sound design of a thunderstorm scene, cue by cue, for a 20-second clip",
+  ],
 };
 
 /** A few of the pool in a fresh order, so two visits are not handed the same
@@ -72,6 +105,9 @@ export function pickSamples(surface: Surface, count = 3): string[] {
   }
   return pool.slice(0, count);
 }
+
+/* Durations arrive under a few names and as numbers or numeric enums. */
+const DURATION_KEY = /^duration/i;
 
 const SETTING_LABELS: Record<string, string> = {
   aspectRatio: "Aspect ratio",
@@ -88,12 +124,21 @@ const SETTING_LABELS: Record<string, string> = {
   multiShots: "Multi-shot",
   keepOriginalSound: "Keep original sound",
   characterOrientation: "Orientation",
+  negativePrompt: "Negative prompt",
+  maxTokens: "Max tokens",
+  system: "System prompt",
+  seed: "Seed",
+  voice: "Voice",
+  language: "Language",
+  lyrics: "Lyrics",
 };
 
 /* A pill carries one word; "Generate audio" is a panel label, not a control on
    a crowded rail. Only keys that read badly at pill length appear here. */
 const SETTING_PILL_LABELS: Record<string, string> = {
   generateAudio: "Audio",
+  negativePrompt: "Negative",
+  system: "System",
 };
 
 export function settingLabel(key: string): string {
@@ -111,11 +156,18 @@ export function settingPillLabel(key: string): string {
    set in caps are lifted; "720p" and "16:9" are already how they are written. */
 export function settingValueLabel(key: string, value: unknown): string {
   if (typeof value === "boolean") return value ? "On" : "Off";
-  if (typeof value === "number") return key === "duration" ? `${value}s` : String(value);
+  if (typeof value === "number") return DURATION_KEY.test(key) ? `${value}s` : String(value);
   const text = String(value);
+  if (DURATION_KEY.test(key) && /^\d+(\.\d+)?$/.test(text)) return `${text}s`;
   if (text === "auto") return "Auto";
   if (/^\d+k$/.test(text)) return text.toUpperCase();
   if (key === "outputFormat") return text.toUpperCase();
+  /* Platform identifiers — "text_to_music", "deep_trailer_bass" — read as the
+     words they are made of. */
+  if (/^[a-z0-9]+(_[a-z0-9]+)+$/.test(text)) {
+    const words = text.replaceAll("_", " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
   return text;
 }
 
@@ -162,21 +214,25 @@ export function roleNoun(role: MediaRole, count: number): string {
   return count === 1 ? ROLE_LABELS[role].toLowerCase() : ROLE_PLURALS[role];
 }
 
-/* Mirrors the allow-list in src/app/api/blob/route.ts. */
+/* What the file dialog offers. The platform's upload endpoint has the last
+   word: a type it does not take comes back as a 415 with its own message. */
 export const ROLE_ACCEPT: Record<MediaRole, string> = {
-  start: "image/jpeg,image/png,image/webp,image/gif",
-  end: "image/jpeg,image/png,image/webp,image/gif",
-  reference: "image/jpeg,image/png,image/webp,image/gif",
-  video: "video/mp4",
-  audio: "audio/wav,audio/x-wav",
+  start: "image/jpeg,image/png,image/webp",
+  end: "image/jpeg,image/png,image/webp",
+  reference: "image/jpeg,image/png,image/webp",
+  video: "video/mp4,video/quicktime,video/webm",
+  audio: "audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/ogg,audio/flac",
 };
+
+/* The platform's caps, checked before a byte is sent. */
+export const UPLOAD_LIMIT_MB: Record<AssetKind, number> = { image: 20, audio: 20, video: 50 };
 
 export function rolesOf(model: ModelEntry): MediaRole[] {
   return Object.keys(model.roles) as MediaRole[];
 }
 
 export function defaultRole(model: ModelEntry): MediaRole {
-  if (model.surface === "image" && model.roles.reference) return "reference";
+  if (model.surface !== "video" && model.roles.reference) return "reference";
   if (model.roles.start) return "start";
   return rolesOf(model)[0] ?? "reference";
 }
@@ -200,6 +256,24 @@ export function ratioToCss(value: unknown, fallback: string): string {
   return match ? `${match[1]} / ${match[2]}` : fallback;
 }
 
+const PIXELS = /^(\d+)\s*[x×*]\s*(\d+)$/i;
+
+/** The shape a run's tile holds open, from whichever setting states it: a
+    ratio, or a size written in pixels. */
+export function tileRatio(values: Record<string, unknown>, fallback: string): string {
+  const pixels = PIXELS.exec(String(values.size ?? ""));
+  if (pixels) return `${pixels[1]} / ${pixels[2]}`;
+  return ratioToCss(values.aspectRatio ?? values.size, fallback);
+}
+
+/* Sound and words have no frame of their own; their tiles are a fixed card. */
+export const SURFACE_RATIOS: Record<Surface, string> = {
+  image: "4 / 3",
+  video: "16 / 9",
+  audio: "16 / 9",
+  text: "4 / 3",
+};
+
 /* Two roles share one word — a start and an end frame are both frames — so the
    phrases dedupe before they are listed. */
 const ROLE_PHRASES: Record<MediaRole, string> = {
@@ -208,6 +282,13 @@ const ROLE_PHRASES: Record<MediaRole, string> = {
   reference: "references",
   video: "clips",
   audio: "audio",
+};
+
+const SURFACE_NOUNS: Record<Surface, string> = {
+  image: "Images",
+  video: "Video",
+  audio: "Audio",
+  text: "Text",
 };
 
 function joinPhrases(parts: string[]): string {
@@ -219,11 +300,12 @@ function joinPhrases(parts: string[]): string {
     what it makes, what it takes, where its allow-lists top out. The catalog
     stays the only place a model's truth is written down. */
 export function describeModel(model: ModelEntry): string {
-  const noun = model.surface === "image" ? "Images" : "Video";
+  if (model.description) return model.description;
+  const noun = SURFACE_NOUNS[model.surface];
   const inputs = [...new Set(rolesOf(model).map((role) => ROLE_PHRASES[role]))];
-  const source = inputs.length
-    ? `${noun} from a prompt, ${joinPhrases(inputs)}`
-    : `${noun} from a prompt`;
+  const words = model.prompt === "none" ? null : "a prompt";
+  const from = [words, inputs.length ? joinPhrases(inputs) : null].filter(Boolean).join(", ");
+  const source = from ? `${noun} from ${from}` : noun;
 
   const limits: string[] = [];
   const resolution = model.settings.resolution;
@@ -266,7 +348,10 @@ export function countSetting(model: ModelEntry): CountSetting | null {
       return { key, kind: "range", counts };
     }
     if (field?.type === "enum") {
-      const counts = field.values.map(Number).filter(Number.isInteger).sort((a, b) => a - b);
+      const counts = field.values
+        .map(Number)
+        .filter(Number.isInteger)
+        .sort((a, b) => a - b);
       if (counts.length > 0) return { key, kind: "enum", counts };
     }
   }
@@ -281,14 +366,21 @@ export function metaOf(model: ModelEntry, values: Record<string, unknown>): stri
     values[key] === undefined ? null : settingValueLabel(key, values[key]);
   const parts =
     model.surface === "image"
-      ? [label("resolution"), label("outputFormat")]
-      : [label("resolution"), label("duration"), values.generateAudio === true ? "Audio" : null];
+      ? [label("resolution") ?? label("size"), label("outputFormat")]
+      : model.surface === "video"
+        ? [label("resolution"), label("duration"), values.generateAudio === true ? "Audio" : null]
+        : model.surface === "audio"
+          ? [label("duration"), label("outputFormat")]
+          : [];
   return parts.filter(Boolean).join(" · ");
 }
 
 export function durationBadge(values: Record<string, unknown>): string | undefined {
-  if (typeof values.duration !== "number") return undefined;
-  return formatClock(values.duration);
+  const seconds = Number(values.duration);
+  if (values.duration === undefined || values.duration === "" || !Number.isFinite(seconds)) {
+    return undefined;
+  }
+  return formatClock(seconds);
 }
 
 export function formatClock(totalSeconds: number): string {

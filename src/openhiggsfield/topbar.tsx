@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { VIEWS, VIEW_LABELS, type GalleryView } from "./data";
-import { AssetsIcon, HeartIcon, ImageIcon, KeyIcon, VideoIcon } from "./icons";
+import { AssetsIcon, AudioIcon, HeartIcon, ImageIcon, KeyIcon, TextIcon, VideoIcon } from "./icons";
 
 const VIEW_ICONS: Record<GalleryView, () => React.ReactNode> = {
   image: () => <ImageIcon />,
   video: () => <VideoIcon />,
+  audio: () => <AudioIcon />,
+  text: () => <TextIcon />,
   assets: () => <AssetsIcon />,
   favorites: () => <HeartIcon size={15} />,
 };
@@ -72,7 +74,7 @@ export function Topbar({
 
   return (
     <div className="ohf-topbar">
-      <h1 className="ohf-sr">OpenHiggsfield AI — Open source AI studio</h1>
+      <h1 className="ohf-sr">OpenPika — Unofficial open-source Pika API studio</h1>
 
       <div className="ohf-bar ohf-enter-1">
         <div
@@ -130,8 +132,8 @@ export function Topbar({
           data-busy={busy}
           data-ready={keyConfigured}
           onClick={onKeys}
-          aria-label={keyConfigured ? "Edit platform key" : "Add platform key"}
-          title={keyConfigured ? "Edit platform key" : "Add platform key"}
+          aria-label={keyConfigured ? "Edit Pika API key" : "Add Pika API key"}
+          title={keyConfigured ? "Edit Pika API key" : "Add Pika API key"}
         >
           <KeyIcon />
           <span className="ohf-key-text">{keyConfigured ? "Your key" : "Add key"}</span>

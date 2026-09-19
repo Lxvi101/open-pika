@@ -69,12 +69,25 @@ export function KeyModal({
         <div className="ohf-keys-head">
           <div>
             <div id="ohf-keys-title" className="ohf-keys-title">
-              API key
+              Pika API key
             </div>
             <p className="ohf-keys-copy">
-              {configured
-                ? "A key is saved in this browser. Enter a new id:secret pair to replace it."
-                : "Paste your platform key as id:secret. It stays in an httpOnly cookie and is sent as Authorization: Key id:secret."}
+              {configured ? (
+                "A key is saved in this browser. Paste a new key to replace it."
+              ) : (
+                <>
+                  Paste your Pika API key. It stays in an httpOnly cookie and is sent as{" "}
+                  <code>X-API-Key</code>. Create one at{" "}
+                  <a href="https://dev.pika.art/keys" target="_blank" rel="noreferrer">
+                    dev.pika.art/keys
+                  </a>
+                  . Generation is prepaid — add funds at{" "}
+                  <a href="https://dev.pika.art/billing" target="_blank" rel="noreferrer">
+                    dev.pika.art/billing
+                  </a>
+                  .
+                </>
+              )}
             </p>
           </div>
           <button type="button" className="ohf-icon-btn" aria-label="Close" onClick={onClose}>
@@ -89,6 +102,7 @@ export function KeyModal({
               className="ohf-input ohf-input--mono"
               name="api_key"
               type="password"
+              placeholder="Paste your Pika API key"
               autoComplete="off"
               spellCheck={false}
               value={apiKey}
@@ -104,7 +118,12 @@ export function KeyModal({
 
           <div className="ohf-keys-actions">
             {configured && (
-              <button type="button" className="ohf-btn-quiet" disabled={busy} onClick={() => void onClear()}>
+              <button
+                type="button"
+                className="ohf-btn-quiet"
+                disabled={busy}
+                onClick={() => void onClear()}
+              >
                 Remove key
               </button>
             )}

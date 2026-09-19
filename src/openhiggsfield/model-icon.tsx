@@ -1,21 +1,23 @@
 import type { CSSProperties } from "react";
 
-/** Brand file in /public/model-icons, or nothing if the pack has no match. */
+/** Brand file in /public/model-icons, or nothing if the pack has no match.
+    Ids are catalog model slugs, so a family is recognised by how it starts. */
+const FAMILIES: ReadonlyArray<[prefix: string, file: string]> = [
+  ["kling", "kling"],
+  ["wan", "wan"],
+  ["flux", "flux"],
+  ["grok", "grok"],
+  ["happyhorse", "happy-horse"],
+  ["minimax", "minimax"],
+  ["hailuo", "minimax"],
+  ["h3", "minimax"],
+  ["recraft", "recraft"],
+  ["ideogram", "ideogram"],
+  ["qwen", "qwen"],
+];
+
 export function modelIconFile(id: string): string | undefined {
-  if (id.startsWith("kling")) return "kling";
-  if (id.startsWith("wan")) return "wan";
-  if (id.startsWith("flux")) return "flux";
-  if (id.startsWith("grok")) return "grok";
-  if (id.startsWith("happy-horse")) return "happy-horse";
-  if (id.startsWith("minimax")) return "minimax";
-  if (id.startsWith("recraft")) return "recraft";
-  if (id.startsWith("soul") || id === "dop") return "higgsfield";
-  if (id.startsWith("ideogram")) return "ideogram";
-  if (id.startsWith("qwen")) return "qwen";
-  if (id.startsWith("pixverse")) return "pixverse";
-  if (id.startsWith("ltx")) return "ltx";
-  if (id.startsWith("z-image")) return "z-image";
-  return undefined;
+  return FAMILIES.find(([prefix]) => id.startsWith(prefix))?.[1];
 }
 
 export function modelIconSrc(id: string): string | undefined {

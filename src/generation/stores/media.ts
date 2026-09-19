@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import type { MediaItem } from "../catalog/types";
+import type { MediaItem, Surface } from "../catalog/types";
 import { browserStorage } from "./browser-storage";
 
 type MediaState = {
@@ -31,3 +31,12 @@ function createMediaStore(name: string) {
 
 export const useImageMedia = createMediaStore("openhiggsfield.imageMedia.v1");
 export const useVideoMedia = createMediaStore("openhiggsfield.videoMedia.v1");
+export const useAudioMedia = createMediaStore("openhiggsfield.audioMedia.v1");
+export const useTextMedia = createMediaStore("openhiggsfield.textMedia.v1");
+
+export const MEDIA_STORES: Record<Surface, typeof useImageMedia> = {
+  image: useImageMedia,
+  video: useVideoMedia,
+  audio: useAudioMedia,
+  text: useTextMedia,
+};

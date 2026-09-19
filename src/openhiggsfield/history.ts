@@ -1,6 +1,8 @@
 import { browserLegacy, defaultKv, type Kv, type LegacyStore } from "./idb";
 import type { Surface } from "@/generation/catalog";
 
+export type RunKind = "image" | "video" | "audio" | "text";
+
 export type RunStatus = "running" | "completed" | "failed";
 
 export interface RunRecord {
@@ -13,8 +15,12 @@ export interface RunRecord {
   ratio: string;
   meta: string;
   badge?: string;
-  kind: "image" | "video";
+  /** What the run delivered, which is not always what its surface suggests: a
+      scoring model on the audio surface hands back a video. */
+  kind: RunKind;
   urls: string[];
+  /** Words the run produced — a language model's answer, a transcript. */
+  text?: string;
   status: RunStatus;
   /** Platform request this row is waiting on. Set while status is running so a
       refresh can resume the poll; completed rows keep it for the same id. */
@@ -30,8 +36,10 @@ export interface RunRecord {
   settings?: Record<string, unknown>;
 }
 
-export const HISTORY_KEY = "history.v1";
-export const LEGACY_HISTORY_KEY = "openhiggsfield.history.v1";
+const SURFACE_NAMES = new Set<string>(["image", "video", "audio", "text"]);
+
+export const HISTORY_KEY = "history.v2";
+export const LEGACY_HISTORY_KEY = "openhiggsfield.history.v2";
 const MAX_RECORDS = 60;
 
 export async function loadHistory(
@@ -140,7 +148,9 @@ function isRunRecord(value: unknown): value is RunRecord {
   const record = value as Partial<RunRecord>;
   return (
     typeof record.id === "string" &&
-    (record.surface === "image" || record.surface === "video") &&
+    typeof record.surface === "string" &&
+    SURFACE_NAMES.has(record.surface) &&
+    (record.text === undefined || typeof record.text === "string") &&
     typeof record.prompt === "string" &&
     typeof record.ratio === "string" &&
     Array.isArray(record.urls) &&

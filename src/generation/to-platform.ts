@@ -1,201 +1,101 @@
 import { getModel } from "./catalog";
-import type { GenerationPlane, PlatformPaths } from "./catalog/types";
+import type { GenerationPlane, MediaRole, Operation, ParamSpec } from "./catalog/types";
 
 type Mapped = { path: string; body: Record<string, unknown> };
-type Mapper = (plane: GenerationPlane) => Mapped;
 
-const MAP: Record<string, Mapper> = {
-  "soul-cinema": (plane) => mapSoul(plane, "higgsfield-ai/soul/cinema"),
-  "soul-2": (plane) => mapSoul(plane, "higgsfield-ai/soul/v2/standard"),
-  "kling-3-turbo": mapKlingTurbo,
-  "kling-3-std": (plane) => mapKling3(plane, "kling-video/v3.0/std"),
-  "kling-3-pro": (plane) => mapKling3(plane, "kling-video/v3.0/pro"),
-  "kling-3-4k": (plane) => mapKling3(plane, "kling-video/v3.0/4k"),
-  "kling-3-motion-std": (plane) => mapKlingMotion(plane, "kling-video/v3/motion-control/std"),
-  "kling-3-motion-pro": (plane) => mapKlingMotion(plane, "kling-video/v3/motion-control/pro"),
-  "seedance-2": (plane) => mapSeedance(plane, "bytedance/seedance-2.0"),
-  "seedance-2-fast": (plane) => mapSeedance(plane, "bytedance/seedance-2.0/fast"),
-  "seedance-2-mini": (plane) => mapSeedance(plane, "bytedance/seedance-2.0/mini"),
-  "seedance-2.5": (plane) => mapSeedance(plane, "bytedance/seedance-2.5"),
-  "seedance-2.5-edit": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-edit", false),
-  "seedance-2.5-extend": (plane) => mapSeedanceSource(plane, "bytedance/seedance-2.5/video-extend", true),
-};
+const ROLES: readonly MediaRole[] = ["start", "end", "reference", "video", "audio"];
 
 export function toPlatform(plane: GenerationPlane): Mapped {
   const model = getModel(plane.model);
-  const map = MAP[model.id] ?? (model.paths ? (next) => mapByPaths(next, model.paths!) : undefined);
-  if (!map) throw new Error(`No platform map for ${plane.model}`);
-  return map(plane);
+  if (!model.operations?.length) throw new Error(`No platform operation for ${plane.model}`);
+  const operation = pickOperation(model.operations, plane);
+  return { path: `/v1/media/${operation.apiId}`, body: buildBody(operation, plane) };
 }
 
-function urls(plane: GenerationPlane, role: "start" | "end" | "reference" | "video" | "audio") {
-  return (plane.media[role] ?? []).map((item) => item.url);
-}
-
-function mapSoul(plane: GenerationPlane, path: string): Mapped {
-  return {
-    path,
-    body: {
-      prompt: plane.prompt.text,
-      batch_size: Number(plane.settings.batchSize),
-      resolution: plane.settings.resolution,
-      aspect_ratio: plane.settings.aspectRatio,
-      enhance_prompt: plane.settings.enhancePrompt,
-    },
-  };
-}
-
-function mapKlingTurbo(plane: GenerationPlane): Mapped {
-  const start = urls(plane, "start")[0];
-  return {
-    path: start
-      ? "kling-video/v3.0-turbo/image-to-video"
-      : "kling-video/v3.0-turbo/text-to-video",
-    body: {
-      prompt: plane.prompt.text,
-      duration: plane.settings.duration,
-      resolution: plane.settings.resolution,
-      ...(start ? { image_url: start } : { aspect_ratio: plane.settings.aspectRatio }),
-    },
-  };
-}
-
-function mapKling3(plane: GenerationPlane, prefix: string): Mapped {
-  const start = urls(plane, "start")[0];
-  const end = urls(plane, "end")[0];
-  const body: Record<string, unknown> = {
-    prompt: plane.prompt.text,
-    sound: plane.settings.sound ? "on" : "off",
-    duration: plane.settings.duration,
-    cfg_scale: plane.settings.cfgScale,
-    multi_shots: plane.settings.multiShots,
-  };
-  if (start) {
-    body.image_url = start;
-    if (end) body.last_image_url = end;
-    return { path: `${prefix}/image-to-video`, body };
+/** The operation the attachments ask for. One that binds every attached role
+    and has every role it requires wins outright; failing that, the one that
+    consumes the most of what is attached. Ties fall to catalog order, so a
+    model lists its most specific operation first. */
+export function pickOperation(operations: readonly Operation[], plane: GenerationPlane): Operation {
+  const attached = ROLES.filter((role) => (plane.media[role]?.length ?? 0) > 0);
+  const satisfied = operations.filter(
+    (operation) =>
+      ROLES.every((role) => !operation.media?.[role]?.required || attached.includes(role)) &&
+      (!operation.requireAny || operation.requireAny.some((role) => attached.includes(role))),
+  );
+  if (satisfied.length === 0) {
+    throw new Error(`Attach ${missingRoles(operations[0]!, attached).join(" and ")} first`);
   }
-  body.aspect_ratio = plane.settings.aspectRatio;
-  return { path: `${prefix}/text-to-video`, body };
+  const consumed = (operation: Operation) =>
+    attached.filter((role) => operation.media?.[role]).length;
+  const exact = satisfied.find((operation) => consumed(operation) === attached.length);
+  if (exact) return exact;
+  return satisfied.reduce((best, next) => (consumed(next) > consumed(best) ? next : best));
 }
 
-function mapKlingMotion(plane: GenerationPlane, path: string): Mapped {
-  const start = urls(plane, "start")[0];
-  const video = urls(plane, "video")[0];
-  return {
-    path,
-    body: {
-      prompt: plane.prompt.text,
-      ...(start ? { image_url: start } : {}),
-      ...(video ? { video_url: video } : {}),
-      keep_original_sound: plane.settings.keepOriginalSound ? "yes" : "no",
-      character_orientation: plane.settings.characterOrientation,
-    },
+function missingRoles(operation: Operation, attached: MediaRole[]): string[] {
+  const names: Record<MediaRole, string> = {
+    start: "a start frame",
+    end: "an end frame",
+    reference: "a reference image",
+    video: "a video",
+    audio: "an audio file",
   };
+  return ROLES.filter((role) => operation.media?.[role]?.required && !attached.includes(role)).map(
+    (role) => names[role],
+  );
 }
 
-function mapByPaths(plane: GenerationPlane, spec: PlatformPaths): Mapped {
-  const start = urls(plane, "start")[0];
-  const end = urls(plane, "end")[0];
-  const refs = urls(plane, "reference");
-  const videos = urls(plane, "video");
-  const body: Record<string, unknown> = {
-    prompt: plane.prompt.text,
-    ...(plane.settings.aspectRatio ? { aspect_ratio: plane.settings.aspectRatio } : {}),
-    ...(plane.settings.resolution ? { resolution: plane.settings.resolution } : {}),
-    ...(typeof plane.settings.duration === "number" ? { duration: plane.settings.duration } : {}),
-  };
-  if (spec.firstLast && (start || end)) {
-    return {
-      path: spec.firstLast,
-      body: {
-        ...body,
-        ...(start ? { first_frame_url: start } : {}),
-        ...(end ? { last_frame_url: end } : {}),
-      },
-    };
+function buildBody(operation: Operation, plane: GenerationPlane): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...operation.fixed };
+
+  const promptField = operation.prompt === undefined ? "prompt" : operation.prompt;
+  const text = plane.prompt.text.trim();
+  if (promptField && text) setPath(body, promptField, text);
+
+  for (const role of ROLES) {
+    const binding = operation.media?.[role];
+    const urls = (plane.media[role] ?? []).map((item) => item.url);
+    if (!binding || urls.length === 0) continue;
+    setPath(body, binding.field, binding.many ? urls : urls[0]);
+    if (binding.durationField) {
+      const seconds = plane.media[role]![0]!.duration;
+      if (!seconds) throw new Error("Could not read the length of the attached file");
+      setPath(body, binding.durationField, Math.round(seconds * 10) / 10);
+    }
   }
-  if (spec.image && start) {
-    return {
-      path: spec.image,
-      body: { ...body, image_url: start, ...(end ? { last_image_url: end } : {}) },
-    };
+
+  for (const [key, spec] of Object.entries(operation.params ?? {})) {
+    const value = paramValue(spec, plane.settings[key]);
+    if (value !== undefined) setPath(body, fieldOf(spec), value);
   }
-  if (spec.reference && (refs.length || videos.length)) {
-    return {
-      path: spec.reference,
-      body: {
-        ...body,
-        ...(refs.length ? { image_urls: refs } : {}),
-        ...(videos.length ? { video_urls: videos } : {}),
-      },
-    };
-  }
-  if (spec.text) {
-    return {
-      path: spec.text,
-      body: refs.length ? { ...body, image_urls: refs } : body,
-    };
-  }
-  if (spec.image) return { path: spec.image, body };
-  if (spec.reference) return { path: spec.reference, body };
-  if (spec.firstLast) return { path: spec.firstLast, body };
-  throw new Error("Model has no platform path");
+
+  return operation.build ? operation.build(plane, body) : body;
 }
 
-function seedanceBody(plane: GenerationPlane, withDuration: boolean) {
-  return {
-    prompt: plane.prompt.text,
-    resolution: plane.settings.resolution,
-    generate_audio: plane.settings.generateAudio,
-    ...(withDuration ? { duration: plane.settings.duration } : {}),
-    ...(plane.settings.outputFormat ? { output_format: plane.settings.outputFormat } : {}),
-  };
+function fieldOf(spec: ParamSpec): string {
+  return typeof spec === "string" ? spec : spec.field;
 }
 
-function mapSeedance(plane: GenerationPlane, prefix: string): Mapped {
-  const start = urls(plane, "start")[0];
-  const end = urls(plane, "end")[0];
-  const refs = urls(plane, "reference");
-  const videos = urls(plane, "video");
-  const audios = urls(plane, "audio");
-  const shared = seedanceBody(plane, true);
-  if (start) {
-    return {
-      path: `${prefix}/image-to-video`,
-      body: { ...shared, image_url: start, ...(end ? { end_image_url: end } : {}) },
-    };
+function paramValue(spec: ParamSpec, value: unknown): unknown {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof spec === "string") return value;
+  if (spec.omit?.includes(value)) return undefined;
+  if (spec.as === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
   }
-  if (refs.length || videos.length || audios.length) {
-    return {
-      path: `${prefix}/reference-to-video`,
-      body: {
-        ...shared,
-        aspect_ratio: plane.settings.aspectRatio,
-        ...(refs.length ? { image_urls: refs } : {}),
-        ...(videos.length ? { video_urls: videos } : {}),
-        ...(audios.length ? { audio_urls: audios } : {}),
-      },
-    };
-  }
-  return {
-    path: `${prefix}/text-to-video`,
-    body: { ...shared, aspect_ratio: plane.settings.aspectRatio },
-  };
+  if (spec.as === "string") return String(value);
+  return value;
 }
 
-function mapSeedanceSource(plane: GenerationPlane, path: string, withDuration: boolean): Mapped {
-  const [video, ...extraVideos] = urls(plane, "video");
-  const refs = urls(plane, "reference");
-  const audios = urls(plane, "audio");
-  return {
-    path,
-    body: {
-      ...seedanceBody(plane, withDuration),
-      ...(video ? { video_url: video } : {}),
-      ...(refs.length ? { image_urls: refs } : {}),
-      ...(extraVideos.length ? { video_urls: extraVideos } : {}),
-      ...(audios.length ? { audio_urls: audios } : {}),
-    },
-  };
+function setPath(body: Record<string, unknown>, path: string, value: unknown): void {
+  const keys = path.split(".");
+  let node = body;
+  for (const key of keys.slice(0, -1)) {
+    const next = node[key];
+    if (next === null || typeof next !== "object" || Array.isArray(next)) node[key] = {};
+    node = node[key] as Record<string, unknown>;
+  }
+  node[keys[keys.length - 1]!] = value;
 }

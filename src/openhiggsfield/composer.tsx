@@ -6,12 +6,12 @@ import type { CSSProperties, ReactNode } from "react";
 import { parseSettings } from "@/generation/catalog";
 import type { ModelEntry, Surface } from "@/generation/catalog";
 import { MAX_BATCH, useActive } from "@/generation/stores/active";
-import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
+import { PROMPT_STORES } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
 
 import { swatchFor } from "./artwork";
 import { AssetPicker } from "./asset-picker";
-import { PROMPT_PLACEHOLDERS, countSetting } from "./data";
+import { PROMPT_PLACEHOLDERS, PROMPT_UNUSED, countSetting } from "./data";
 import type { RunRecord } from "./history";
 import { ArrowUpIcon, CaretDownIcon, CloseIcon, MinusIcon, PlusIcon, WarningIcon } from "./icons";
 import { MediaStrip, useMediaTray } from "./media-tray";
@@ -41,6 +41,9 @@ function popoverWidth(id: string, model: ModelEntry): number {
   /* A list of an enum's values is the narrow panel; a slider needs its travel. */
   if (id.startsWith(SETTING) && model.settings[id.slice(SETTING.length)]?.type === "enum") {
     return 216;
+  }
+  if (id.startsWith(SETTING) && model.settings[id.slice(SETTING.length)]?.type === "text") {
+    return 360;
   }
   return 268;
 }
@@ -79,9 +82,9 @@ export function Composer({
   const setModel = useActive((state) => state.setModel);
   const batch = useActive((state) => state.batch);
   const setBatch = useActive((state) => state.setBatch);
-  const imagePrompt = useImagePrompt();
-  const videoPrompt = useVideoPrompt();
-  const prompt = surface === "image" ? imagePrompt : videoPrompt;
+  /* The surface picks the store, not the hook: every surface's store is the
+     same hook shape, so the call order never changes between renders. */
+  const prompt = PROMPT_STORES[surface]();
   const settings = useSettings();
   const values = parseSettings(model, settings.byModel[model.id] ?? {});
   const tray = useMediaTray(model, onError);
@@ -93,8 +96,13 @@ export function Composer({
   const wrapRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   /* A run in flight is not a lock: it holds its own tile in the grid, so the
-     only thing that can stop a press is having nothing to say. */
-  const disabled = prompt.text.trim().length === 0;
+     only thing that can stop a press is having nothing to say — or, for a tool
+     that works on media alone, nothing to work on. */
+  const wordless = model.prompt === "none";
+  const needsWords = !wordless && model.prompt !== "optional";
+  const disabled = needsWords
+    ? prompt.text.trim().length === 0
+    : tray.items.length === 0 && prompt.text.trim().length === 0;
 
   /* One batch control, two mechanisms. A model that declares its own
      results-per-request gets that setting written; the rest are submitted once
@@ -211,7 +219,14 @@ export function Composer({
   const attachLabel = tray.allFull ? "Change the inputs" : "Add an input";
   const settingKey = overlay?.startsWith(SETTING) ? overlay.slice(SETTING.length) : null;
   const generateLabel = batchValue > 1 ? `Generate ${batchValue} results` : "Generate";
-  const generateTip = disabled ? "Write a prompt first" : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
+  const generateTip = disabled
+    ? needsWords
+      ? "Write a prompt first"
+      : "Attach an input first"
+    : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
+  /* A language model answers once per press; a batch of identical answers is
+     spend with nothing to show for it. */
+  const batchable = model.surface !== "text";
 
   return (
     <div className="ohf-dock" ref={dockRef} data-selecting={selecting}>
@@ -313,7 +328,8 @@ export function Composer({
                 className="ohf-prompt"
                 rows={1}
                 value={prompt.text}
-                placeholder={PROMPT_PLACEHOLDERS[surface]}
+                placeholder={wordless ? PROMPT_UNUSED : PROMPT_PLACEHOLDERS[surface]}
+                disabled={wordless}
                 aria-label="Prompt"
                 onPointerDown={() => setOverlay(null)}
                 onFocus={() => setOverlay(null)}
@@ -340,7 +356,10 @@ export function Composer({
                   {modelIconSrc(model.id) ? (
                     <ModelIcon modelId={model.id} />
                   ) : (
-                    <span className="ohf-model-swatch" style={{ background: swatchFor(surface, model.id) }} />
+                    <span
+                      className="ohf-model-swatch"
+                      style={{ background: swatchFor(surface, model.id) }}
+                    />
                   )}
                   <span className="ohf-ctl-name">{model.label}</span>
                   <span className="ohf-caret">
@@ -359,7 +378,9 @@ export function Composer({
                   />
                 ))}
 
-                <BatchStepper value={batchValue} counts={counts} onChange={setBatchValue} />
+                {batchable && (
+                  <BatchStepper value={batchValue} counts={counts} onChange={setBatchValue} />
+                )}
               </div>
 
               <span className="ohf-generate-slot ohf-tip ohf-tip--end" data-tip={generateTip}>
