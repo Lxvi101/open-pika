@@ -49,6 +49,17 @@ export function AudioIcon({ size = 16 }: IconProps) {
   );
 }
 
+/* Words: three lines of a paragraph, the last one short. */
+export function TextIcon({ size = 16 }: IconProps) {
+  return (
+    <svg {...base(size)}>
+      <path d="M2.75 4.25h10.5" />
+      <path d="M2.75 8h10.5" />
+      <path d="M2.75 11.75h6.2" />
+    </svg>
+  );
+}
+
 /* Assets holds every finished run, so the mark is a stack of frames seen
    edge-on — the same frame the Image and Video icons draw, with the ones
    behind it showing only their top edge. */

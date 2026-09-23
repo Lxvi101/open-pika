@@ -6,14 +6,7 @@ import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
 
 import { ROLE_KINDS, ROLE_LABELS, defaultRole, roleNoun, rolesOf, type AssetKind } from "./data";
 import type { RunRecord } from "./history";
-import {
-  AssetsIcon,
-  AudioIcon,
-  CheckIcon,
-  CloseIcon,
-  PlayBadgeIcon,
-  UploadIcon,
-} from "./icons";
+import { AssetsIcon, AudioIcon, CheckIcon, CloseIcon, PlayBadgeIcon, UploadIcon } from "./icons";
 import type { UploadRecord } from "./uploads";
 
 type Source = "uploads" | "generations";
@@ -300,7 +293,11 @@ export function AssetPicker({
                 aria-label={uploadTip}
                 onClick={() => onUpload(role)}
               >
-                {uploading ? <span className="ohf-spinner" aria-hidden /> : <UploadIcon size={17} />}
+                {uploading ? (
+                  <span className="ohf-spinner" aria-hidden />
+                ) : (
+                  <UploadIcon size={17} />
+                )}
                 <span className="ohf-asset-upload-label">Upload file</span>
               </button>
             )}

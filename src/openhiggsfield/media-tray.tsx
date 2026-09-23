@@ -4,17 +4,24 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
-import { useImageMedia, useVideoMedia } from "@/generation/stores/media";
+import { MEDIA_STORES } from "@/generation/stores/media";
 import { uploadMedia } from "@/generation/upload";
 
-import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, rolesOf } from "./data";
+import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, UPLOAD_LIMIT_MB, rolesOf } from "./data";
 import { AudioIcon, CloseIcon, VideoIcon } from "./icons";
-import { kindOfFile, loadUploads, mergeUploads, rememberUpload, saveUploads, type UploadRecord } from "./uploads";
+import {
+  kindOfFile,
+  loadUploads,
+  mergeUploads,
+  rememberUpload,
+  saveUploads,
+  type UploadRecord,
+} from "./uploads";
 
+/* Every surface's store is the same hook shape, so picking one by surface
+   keeps the call order fixed between renders. */
 function useMedia(model: ModelEntry) {
-  const imageMedia = useImageMedia();
-  const videoMedia = useVideoMedia();
-  return model.surface === "image" ? imageMedia : videoMedia;
+  return MEDIA_STORES[model.surface]();
 }
 
 export interface MediaTray {
@@ -22,7 +29,7 @@ export interface MediaTray {
   /** The current surface's attachments, so the picker can derive its own caps
       from the same list the strip below renders. */
   items: MediaItem[];
-  /** Every file this browser has sent to Blob, newest first. */
+  /** Every file this browser has uploaded, newest first. */
   uploads: UploadRecord[];
   /** The URL of the last file uploaded from the picker. It goes onto the shelf
       and into the panel's selection, not onto the plane — the panel stages the
@@ -78,10 +85,18 @@ export function useMediaTray(
   for (const role of roles) {
     counts[role] = media.items.filter((item) => item.role === role).length;
   }
-  const allFull = roles.length > 0 && roles.every((role) => counts[role]! >= (model.roles[role] ?? 0));
+  const allFull =
+    roles.length > 0 && roles.every((role) => counts[role]! >= (model.roles[role] ?? 0));
 
   async function onFile(file: File | undefined) {
     if (!file) return;
+    const limit = UPLOAD_LIMIT_MB[kindOfFile(file)];
+    if (file.size > limit * 1024 * 1024) {
+      onError(
+        `That file is over the platform’s ${limit} MB limit for ${kindOfFile(file)} uploads.`,
+      );
+      return;
+    }
     onError(null);
     setUploading(true);
     try {
@@ -101,7 +116,7 @@ export function useMediaTray(
     } catch (caught) {
       onError(
         caught instanceof Error
-          ? `Upload failed — ${caught.message}. Check the Blob store is configured, then retry.`
+          ? `Upload failed — ${caught.message}. Check the key in the sidebar, then retry.`
           : "Upload failed. Retry, or drop the file and generate from the prompt alone.",
       );
     } finally {

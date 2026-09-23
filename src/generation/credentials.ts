@@ -1,4 +1,4 @@
-export const PLATFORM_KEY_COOKIE = "api_key";
+export const PLATFORM_KEY_COOKIE = "pika_api_key";
 
 export const PLATFORM_KEY_COOKIE_OPTIONS = {
   httpOnly: true,
@@ -26,7 +26,7 @@ export function decodeCredentials(raw: string | undefined): { apiKey: string } |
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const apiKey = (parsed as { apiKey?: unknown }).apiKey;
     if (typeof apiKey !== "string" || !apiKey.trim()) return null;
-    return { apiKey: requireIdAndSecret(apiKey.trim()) };
+    return { apiKey: requireKey(apiKey.trim()) };
   } catch {
     return null;
   }
@@ -39,17 +39,12 @@ export function parseCredentialInput(data: unknown): { apiKey: string } {
   const record = data as { apiKey?: unknown; api_key?: unknown };
   const apiKey = record.apiKey ?? record.api_key;
   if (typeof apiKey !== "string" || !apiKey.trim()) throw new Error("Enter an API key");
-  return { apiKey: requireIdAndSecret(apiKey.trim()) };
+  return { apiKey: requireKey(apiKey.trim()) };
 }
 
-export function toAuthorizationHeader(apiKey: string): string {
-  return `Key ${requireIdAndSecret(apiKey)}`;
-}
-
-function requireIdAndSecret(apiKey: string): string {
-  const colon = apiKey.indexOf(":");
-  if (colon <= 0 || colon === apiKey.length - 1) {
-    throw new Error("API key must be id:secret");
-  }
+/* The key travels in a header, so anything a header cannot carry is a paste
+   accident — a trailing newline, a quoted value, the whole curl line. */
+function requireKey(apiKey: string): string {
+  if (!/^[\x21-\x7e]+$/.test(apiKey)) throw new Error("API key must be a single token");
   return apiKey;
 }

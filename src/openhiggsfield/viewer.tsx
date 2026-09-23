@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { settingLabel, settingValueLabel } from "./data";
-import { fileNameFor, saveFile } from "./download";
+import { fileNameFor, saveFile, saveText } from "./download";
 import { timeAgo, type RunRecord } from "./history";
 import { ModelIcon } from "./model-icon";
 import {
@@ -132,7 +132,8 @@ export function Viewer({
     setCopied(false);
   }
   const aspect = delivered ?? w / h;
-  const url = item.urls[0];
+  /* A text run's URL is its transcript document; the words are what is kept. */
+  const url = item.kind === "text" ? undefined : item.urls[0];
 
   /* Measured on attach as well as on load: the grid has already fetched this
      URL, so the element is usually complete before React can hear its event. */
@@ -204,7 +205,15 @@ export function Viewer({
             style={{ aspectRatio: String(aspect), "--a": aspect.toFixed(4) } as React.CSSProperties}
           >
             <span className="ohf-viewer-art" style={{ background: item.art }} />
-            {url ? (
+            {item.kind === "text" ? (
+              <div className="ohf-viewer-text ohf-scroll">{item.text}</div>
+            ) : url && item.kind === "audio" ? (
+              <div className="ohf-viewer-sound">
+                <span className="ohf-grain" />
+                {/* Platform CDN host is not known at build time. */}
+                <audio className="ohf-viewer-audio" src={url} controls autoPlay />
+              </div>
+            ) : url ? (
               item.kind === "video" ? (
                 <video
                   ref={measure}
@@ -310,6 +319,17 @@ export function Viewer({
               </p>
             )}
             <div className="ohf-viewer-foot-row">
+              {!url && item.text && (
+                <button
+                  type="button"
+                  className="ohf-btn-solid ohf-viewer-download"
+                  title="Save the text to this device"
+                  onClick={() => saveText(item.text!, fileNameFor(item, 0))}
+                >
+                  <DownloadIcon />
+                  Download
+                </button>
+              )}
               {url && (
                 <a
                   className="ohf-btn-solid ohf-viewer-download"
@@ -342,7 +362,11 @@ export function Viewer({
                   ) : (
                     <DownloadIcon />
                   )}
-                  {saveState === "saving" ? "Saving" : saveState === "failed" ? "Open file" : "Download"}
+                  {saveState === "saving"
+                    ? "Saving"
+                    : saveState === "failed"
+                      ? "Open file"
+                      : "Download"}
                 </a>
               )}
               {/* Between the two keeping actions, the way it sits between them on

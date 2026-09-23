@@ -59,13 +59,7 @@ export function SelectionBar({
     /* A labelled group rather than role="toolbar": the toolbar pattern promises
        arrow-key navigation between its controls, and four buttons the visitor
        can already tab through do not need a second set of keys to learn. */
-    <div
-      className="ohf-selbar"
-      role="group"
-      aria-label="Bulk actions"
-      data-on={on}
-      inert={!on}
-    >
+    <div className="ohf-selbar" role="group" aria-label="Bulk actions" data-on={on} inert={!on}>
       {/* Picking is done in the grid and reported here, so the count says so
           out loud rather than leaving the change silent. */}
       <p className="ohf-selbar-count" role="status">
@@ -82,7 +76,7 @@ export function SelectionBar({
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={record.urls[0]} alt="" />
               ) : (
-                record.kind === "video" && (
+                (record.kind === "video" || record.kind === "audio") && (
                   <span className="ohf-selchip-play">
                     <PlayBadgeIcon size={7} />
                   </span>

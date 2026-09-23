@@ -2,31 +2,40 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { hasPlatformCredentials, submitGeneration } from "@/generation/actions";
+import { hasPlatformCredentials, submitChat, submitGeneration } from "@/generation/actions";
 import { MissingCredentialsError } from "@/generation/credentials";
 import { MODELS, getModel } from "@/generation/catalog";
 import type { Surface } from "@/generation/catalog";
-import { assemblePlane } from "@/generation/plane";
+import { assemblePlane, measurePlane } from "@/generation/plane";
 import type { GenerationStatus } from "@/generation/platform";
 import { POLL_DEADLINE_MS, stopWatching, watchRequest } from "@/generation/poll";
 import { useActive } from "@/generation/stores/active";
-import { useImagePrompt, useVideoPrompt } from "@/generation/stores/prompt";
+import { PROMPT_STORES } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
 
 import { GRAIN_URI, artFor } from "./artwork";
 import { Composer } from "./composer";
-import { fileNameFor, saveFile } from "./download";
+import { fileNameFor, saveFile, saveText } from "./download";
 import { KeyModal } from "./key-modal";
 import {
   CROSS_VIEWS,
   countSetting,
+  SURFACE_RATIOS,
   durationBadge,
   metaOf,
-  ratioToCss,
+  tileRatio,
   type GalleryView,
 } from "./data";
 import { Gallery } from "./gallery";
-import { loadHistory, mergeHistory, replaceRequest, saveHistory, stepRun, type RunRecord } from "./history";
+import {
+  loadHistory,
+  mergeHistory,
+  replaceRequest,
+  saveHistory,
+  stepRun,
+  type RunKind,
+  type RunRecord,
+} from "./history";
 import { CloseIcon, UndoIcon } from "./icons";
 import { SelectionBar, type SaveProgress } from "./selection-bar";
 import { Topbar } from "./topbar";
@@ -104,10 +113,26 @@ function runningRows(requestId: string, count: number, draft: RunDraft): RunReco
   });
 }
 
+/* What came back decides the tile, not the surface it was asked from: a scoring
+   model on the audio surface delivers a video, a transcription delivers words. */
+function deliveryOf(status: GenerationStatus): { kind: RunKind; urls: string[] } | null {
+  if (status.images?.length)
+    return { kind: "image", urls: status.images.map((image) => image.url) };
+  if (status.video) return { kind: "video", urls: [status.video.url] };
+  if (status.audio) return { kind: "audio", urls: [status.audio.url] };
+  if (status.text !== undefined || status.transcript) return { kind: "text", urls: [] };
+  return null;
+}
+
 function terminalRows(requestId: string, draft: RunDraft, status: GenerationStatus): RunRecord[] {
-  const urls =
-    status.images?.map((image) => image.url) ?? (status.video ? [status.video.url] : []);
-  const completed = status.status === "completed" && urls.length > 0;
+  const delivery = status.status === "completed" ? deliveryOf(status) : null;
+  if (delivery?.kind === "text") {
+    return [
+      textRow(status.requestId || requestId, draft, status.text ?? "", status.transcript?.url),
+    ];
+  }
+  const urls = delivery?.urls ?? [];
+  const completed = urls.length > 0;
   const base = status.requestId || requestId;
   const failure = completed ? undefined : failureText(status);
   const delivered: Array<string | null> = completed ? urls : [null];
@@ -123,7 +148,7 @@ function terminalRows(requestId: string, draft: RunDraft, status: GenerationStat
       ratio: draft.ratio,
       meta: draft.meta,
       badge: draft.badge,
-      kind: draft.surface,
+      kind: delivery?.kind ?? draft.surface,
       urls: url ? [url] : [],
       status: completed ? "completed" : "failed",
       error: failure,
@@ -132,6 +157,26 @@ function terminalRows(requestId: string, draft: RunDraft, status: GenerationStat
       settings: draft.settings,
     };
   });
+}
+
+function textRow(id: string, draft: RunDraft, text: string, url?: string): RunRecord {
+  return {
+    id,
+    requestId: id,
+    surface: draft.surface,
+    modelId: draft.modelId,
+    modelLabel: draft.modelLabel,
+    prompt: draft.prompt,
+    ratio: draft.ratio,
+    meta: draft.meta,
+    kind: "text",
+    urls: url ? [url] : [],
+    text,
+    status: "completed",
+    art: artFor(draft.surface, hueOf(id), id),
+    createdAt: draft.createdAt,
+    settings: draft.settings,
+  };
 }
 
 function failedRows(requestId: string, count: number, draft: RunDraft, error: string): RunRecord[] {
@@ -143,9 +188,12 @@ function failedRows(requestId: string, count: number, draft: RunDraft, error: st
 }
 
 function failureText(status: GenerationStatus): string {
-  if (status.status === "nsfw") return "the platform flagged the result as NSFW";
-  if (status.status === "canceled") return "the run was canceled";
+  if (status.errorCode === "content_moderation")
+    return "the provider’s moderation refused the request";
+  if (status.errorCode === "insufficient_balance")
+    return "the balance does not cover this run — top up at dev.pika.art/billing";
   if (typeof status.error === "string" && status.error) return status.error;
+  if (status.status === "completed") return "the platform finished without delivering a file";
   return "the platform reported a failure";
 }
 
@@ -153,6 +201,9 @@ function describeError(caught: unknown): string {
   const message = caught instanceof Error ? caught.message : String(caught);
   if (caught instanceof MissingCredentialsError || message.includes("Missing platform key")) {
     return "Add your platform key to generate.";
+  }
+  if (/insufficient/i.test(message)) {
+    return `Generation failed — ${message}. Top up at dev.pika.art/billing, then retry.`;
   }
   return `Generation failed — ${message}. Try again; if it repeats, check the key in the sidebar.`;
 }
@@ -241,10 +292,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   const markFresh = useCallback((ids: string[]) => {
     setFreshIds((prev) => [...prev, ...ids]);
     freshTimers.current.push(
-      window.setTimeout(
-        () => setFreshIds((prev) => prev.filter((id) => !ids.includes(id))),
-        900,
-      ),
+      window.setTimeout(() => setFreshIds((prev) => prev.filter((id) => !ids.includes(id))), 900),
     );
   }, []);
 
@@ -263,7 +311,9 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
           void saveHistory(next);
           return next;
         });
-        markFresh(records.filter((record) => record.status === "completed").map((record) => record.id));
+        markFresh(
+          records.filter((record) => record.status === "completed").map((record) => record.id),
+        );
         if (records.some((record) => record.status === "failed")) {
           const failure = records[0]?.error ?? "the platform reported a failure";
           setError(
@@ -276,7 +326,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         const message = describeError(caught);
         if (message.includes("platform key")) setKeysOpen(true);
         setHistory((prev) => {
-          const next = replaceRequest(prev, requestId, failedRows(requestId, expected, draft, message));
+          const next = replaceRequest(
+            prev,
+            requestId,
+            failedRows(requestId, expected, draft, message),
+          );
           void saveHistory(next);
           return next;
         });
@@ -329,14 +383,15 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
       setError("Add your platform key to generate.");
       return;
     }
-    const plane = assemblePlane();
-    if (!plane.prompt.text.trim()) return;
-
+    const plane = await measurePlane(assemblePlane());
     const entry = getModel(plane.model);
-    const ratio = ratioToCss(
-      plane.settings.aspectRatio,
-      entry.surface === "image" ? "4 / 3" : "16 / 9",
-    );
+    const needsWords = entry.prompt !== "none" && entry.prompt !== "optional";
+    if (needsWords && !plane.prompt.text.trim()) return;
+
+    const ratio =
+      entry.surface === "image" || entry.surface === "video"
+        ? tileRatio(plane.settings, SURFACE_RATIOS[entry.surface])
+        : SURFACE_RATIOS[entry.surface];
     const meta = metaOf(entry, plane.settings);
     const badge = entry.surface === "video" ? durationBadge(plane.settings) : undefined;
 
@@ -345,9 +400,11 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
        submitted once per result. Either way the grid opens the same number of
        skeletons, and each request clears the ones it owns. */
     const native = countSetting(entry);
-    const expected = native
-      ? Math.max(1, Number(plane.settings[native.key]) || 1)
-      : useActive.getState().batch;
+    const expected = entry.chat
+      ? 1
+      : native
+        ? Math.max(1, Number(plane.settings[native.key]) || 1)
+        : useActive.getState().batch;
     const startedAt = Date.now();
     const seq = ++press.current;
     const pending: ActiveRun[] = Array.from({ length: expected }, (_, index) => ({
@@ -377,7 +434,34 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     setRuns((prev) => [...pending, ...prev]);
     galleryRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
+    /* A language model has no job to watch: the answer is the press's own
+       return value, so the skeleton stands until it lands and the row is
+       written once, already finished. */
+    const runChat = async (slot: { skeletons: string[] }) => {
+      try {
+        const { text } = await submitChat(plane);
+        if (!alive.current) return;
+        const record = textRow(`chat-${crypto.randomUUID()}`, draft, text);
+        setHistory((prev) => {
+          const next = [record, ...prev];
+          void saveHistory(next);
+          return next;
+        });
+        markFresh([record.id]);
+      } catch (caught) {
+        if (!alive.current) return;
+        const message = describeError(caught);
+        if (message.includes("platform key")) setKeysOpen(true);
+        setError((prev) => prev ?? message);
+      } finally {
+        if (alive.current) {
+          setRuns((prev) => prev.filter((active) => !slot.skeletons.includes(active.id)));
+        }
+      }
+    };
+
     const runOne = async (slot: { skeletons: string[] }) => {
+      if (entry.chat) return runChat(slot);
       try {
         const queued = await submitGeneration(plane);
         setHistory((prev) => {
@@ -400,7 +484,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
     };
 
     await Promise.all(slots.map(runOne));
-  }, [keyConfigured, resume]);
+  }, [keyConfigured, resume, markFresh]);
 
   /* Reuse restores the whole plane the run was made from — model, its dials,
      then the words. A reuse that dropped the ratio and resolution would
@@ -411,7 +495,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
         setModel(record.modelId);
         if (record.settings) setSettings(record.modelId, record.settings);
       }
-      (record.surface === "image" ? useImagePrompt : useVideoPrompt).getState().setText(record.prompt);
+      PROMPT_STORES[record.surface].getState().setText(record.prompt);
       setViewerId(null);
       setError(null);
       setFocusNonce((n) => n + 1);
@@ -552,7 +636,10 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      to explain itself, and the viewer's own Download states what to do next. */
   const downloadRun = useCallback(async (record: RunRecord) => {
     const url = record.urls[0];
-    if (!url) return;
+    if (!url) {
+      if (record.text) saveText(record.text, fileNameFor(record, 0));
+      return;
+    }
     const ok = await saveFile(url, fileNameFor(record, 0));
     if (!ok) {
       setError(
@@ -588,7 +675,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
      caret; pressing Generate stays their call. */
   const applyStarter = useCallback(
     (text: string) => {
-      (surface === "image" ? useImagePrompt : useVideoPrompt).getState().setText(text);
+      PROMPT_STORES[surface].getState().setText(text);
       setError(null);
       setFocusNonce((n) => n + 1);
     },
@@ -621,7 +708,10 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
   const busy = runs.length > 0 || history.some((record) => record.status === "running");
 
   return (
-    <div className={`ohf ${fontClassName}`} style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}>
+    <div
+      className={`ohf ${fontClassName}`}
+      style={{ "--ohf-grain": GRAIN_URI } as React.CSSProperties}
+    >
       <div className="ohf-shell">
         <main className="ohf-main">
           <Topbar
@@ -671,11 +761,7 @@ export function OpenHiggsfieldApp({ fontClassName = "" }: { fontClassName?: stri
             onGenerate={runGenerate}
             notice={
               deleted && (
-                <UndoBar
-                  records={deleted}
-                  onUndo={restoreDeleted}
-                  onDismiss={dismissDeleted}
-                />
+                <UndoBar records={deleted} onUndo={restoreDeleted} onDismiss={dismissDeleted} />
               )
             }
           />
@@ -742,11 +828,7 @@ function UndoBar({
 
   return (
     <div className="ohf-undo" role="status">
-      <span
-        className="ohf-undo-drain"
-        style={{ animationDuration: `${UNDO_MS}ms` }}
-        aria-hidden
-      />
+      <span className="ohf-undo-drain" style={{ animationDuration: `${UNDO_MS}ms` }} aria-hidden />
       <span className="ohf-undo-text">{`Deleted ${subject}`}</span>
       <button type="button" className="ohf-undo-act" onClick={onUndo}>
         <UndoIcon />

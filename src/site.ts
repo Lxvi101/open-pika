@@ -15,12 +15,14 @@ function resolveOrigin(): string {
 
 export const SITE_URL = resolveOrigin();
 
-export const SITE_NAME = "OpenHiggsfield AI";
-export const SITE_DESCRIPTOR = "Open source AI studio";
+export const SITE_NAME = "OpenPika";
+export const SITE_DESCRIPTOR = "Unofficial open-source Pika API studio";
 export const SITE_TITLE = `${SITE_NAME} — ${SITE_DESCRIPTOR}`;
 
+/* Stated once here so it reaches every route through the shared metadata
+   description: this is a community project, not a Pika product. */
 export const SITE_DESCRIPTION =
-  "A studio for image and video generation — one prompt bar, each model’s own settings, and every finished run in one gallery.";
+  "An unofficial, community-built studio for the Pika API — not affiliated with or endorsed by Pika. Video, image, audio and text in one composer, one prompt bar, each model’s own settings, and every finished run in one gallery.";
 
 /** Near-black studio ground; also the installed-app and browser-chrome color. */
 export const STUDIO_BG = "#0a0a0b";
@@ -36,7 +38,7 @@ export const OG_IMAGE = {
   width: 1200,
   height: 630,
   type: "image/png",
-  alt: "The OpenHiggsfield AI open-frame mark on a near-black field, above the OpenHiggsfield AI wordmark, the words Open source AI studio, and a line describing one prompt bar for image and video with every finished run in one gallery.",
+  alt: "The OpenPika open-frame mark on a near-black field, above the OpenPika wordmark, the words Unofficial open-source Pika API studio, and a line describing one composer for video, image, audio and text with every finished run in one gallery.",
 };
 
 /* Next replaces the whole `openGraph` (and `twitter`) object when a route

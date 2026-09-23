@@ -1,5 +1,8 @@
 import type { ModelEntry } from "./types";
 
+/** The model's settings with every value legal. Anything the catalog no longer
+    allows — a stored pick from before a catalog sync, a hand-made payload —
+    falls back to the default rather than failing the press. */
 export function parseSettings(
   model: ModelEntry,
   raw: Record<string, unknown>,
@@ -8,15 +11,17 @@ export function parseSettings(
   for (const [key, field] of Object.entries(model.settings)) {
     const value = raw[key];
     if (field.type === "enum") {
-      const picked = typeof value === "string" ? value : field.default;
-      if (!field.values.includes(picked)) throw new Error(`Invalid ${key}`);
-      out[key] = picked;
+      out[key] = typeof value === "string" && field.values.includes(value) ? value : field.default;
       continue;
     }
     if (field.type === "range") {
-      const picked = typeof value === "number" ? value : field.default;
-      if (picked < field.min || picked > field.max) throw new Error(`Invalid ${key}`);
-      out[key] = picked;
+      const legal = typeof value === "number" && value >= field.min && value <= field.max;
+      out[key] = legal ? value : field.default;
+      continue;
+    }
+    if (field.type === "text") {
+      const text = typeof value === "string" ? value : field.default;
+      out[key] = field.maxLength === undefined ? text : text.slice(0, field.maxLength);
       continue;
     }
     out[key] = typeof value === "boolean" ? value : field.default;

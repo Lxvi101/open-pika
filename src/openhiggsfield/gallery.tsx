@@ -1,15 +1,24 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type { Surface } from "@/generation/catalog";
 
 import { swatchFor } from "./artwork";
-import { CROSS_VIEWS, SAMPLES, pickSamples, type GalleryView } from "./data";
+import { CROSS_VIEWS, SAMPLES, SURFACE_RATIOS, pickSamples, type GalleryView } from "./data";
 import type { ActiveRun } from "./openhiggsfield-app";
 import {
   ArrowRightIcon,
+  AudioIcon,
   CheckIcon,
   DownloadIcon,
   HeartIcon,
@@ -30,9 +39,17 @@ const EMPTY: Record<GalleryView, { title: string; hint: string }> = {
     title: "Your video runs land here",
     hint: "Describe the shot below, pick a model, press Generate. Every finished run stays in this browser.",
   },
+  audio: {
+    title: "Your audio runs land here",
+    hint: "Describe a sound, a track or the words to speak, pick a model, press Generate. Every finished run stays in this browser.",
+  },
+  text: {
+    title: "Your text runs land here",
+    hint: "Ask a language model for a script, a shot list or a sharper prompt. Every answer stays in this browser.",
+  },
   assets: {
     title: "Nothing generated yet",
-    hint: "Image and video runs both land in this grid and stay in this browser.",
+    hint: "Runs from every surface land in this grid and stay in this browser.",
   },
   favorites: {
     title: "Nothing kept yet",
@@ -123,7 +140,10 @@ const Tile = memo(function Tile({
   onDelete: (item: RunRecord) => void;
 }) {
   const delay = `${Math.min(index * 0.035, 0.28).toFixed(3)}s`;
-  const poster = item.urls[0];
+  /* A text run's URL, when it has one, is its transcript document — not
+     something to draw. */
+  const poster = item.kind === "text" ? undefined : item.urls[0];
+  const savable = poster !== undefined || Boolean(item.text);
   const videoRef = useRef<HTMLVideoElement>(null);
   /* The keep beat is driven from the click, never from mount: a CSS animation
      bound to the saved state alone would re-fire on every scope switch. */
@@ -169,10 +189,7 @@ const Tile = memo(function Tile({
 
   if (item.status === "failed") {
     return (
-      <div
-        className="ohf-tile ohf-tile--failed"
-        data-picked={picked}
-      >
+      <div className="ohf-tile ohf-tile--failed" data-picked={picked}>
         <div className="ohf-fail">
           <span className="ohf-fail-ic">
             <WarningIcon />
@@ -212,7 +229,19 @@ const Tile = memo(function Tile({
         video.currentTime = 0;
       }}
     >
+      {item.kind === "text" && <span className="ohf-tile-text">{item.text}</span>}
+      {/* Sound has no picture: the run's own artwork stands in, and the viewer
+          holds the player. */}
+      {item.kind === "audio" && (
+        <span className="ohf-tile-sound" style={{ background: item.art }}>
+          <span className="ohf-grain" style={{ opacity: 0.22 }} />
+          <span className="ohf-tile-sound-ic">
+            <AudioIcon size={20} />
+          </span>
+        </span>
+      )}
       {poster &&
+        item.kind !== "audio" &&
         (item.kind === "video" ? (
           <video
             ref={videoRef}
@@ -236,9 +265,7 @@ const Tile = memo(function Tile({
       <button
         type="button"
         className="ohf-tile-open"
-        onClick={(event) =>
-          selecting ? onPick(item.id, index, event.shiftKey) : onOpen(item.id)
-        }
+        onClick={(event) => (selecting ? onPick(item.id, index, event.shiftKey) : onOpen(item.id))}
         aria-label={
           selecting
             ? `${picked ? "Deselect" : "Select"} run — ${named}`
@@ -248,7 +275,7 @@ const Tile = memo(function Tile({
 
       {picker}
 
-      {item.kind === "video" && item.badge && (
+      {(item.kind === "video" || item.kind === "audio") && item.badge && (
         <span className="ohf-tile-badge">
           <PlayBadgeIcon />
           {item.badge}
@@ -292,7 +319,7 @@ const Tile = memo(function Tile({
         {/* Absent on a run the platform returned no file for — there would be
             nothing to save. The press is guarded rather than disabled: a
             disabled button drops the focus that is holding this rail open. */}
-        {poster && (
+        {savable && (
           <button
             type="button"
             className="ohf-tile-act"
@@ -503,7 +530,7 @@ function Empty({
   surface: Surface;
   onStarter: (prompt: string) => void;
 }) {
-  const thumbRatio = surface === "image" ? "4 / 3" : "16 / 9";
+  const thumbRatio = SURFACE_RATIOS[surface];
   /* Reshuffled on every page load, and only after mount — picking during
      render would hand the hydrating client a different three than the server
      wrote. Until the picks land the server's three hold their space unseen, so
@@ -518,10 +545,7 @@ function Empty({
         <p className="ohf-empty-hint">{EMPTY[view].hint}</p>
 
         {!CROSS_VIEWS.has(view) && (
-          <ul
-            className="ohf-empty-starters"
-            style={samples ? undefined : { visibility: "hidden" }}
-          >
+          <ul className="ohf-empty-starters" style={samples ? undefined : { visibility: "hidden" }}>
             {(samples ?? SAMPLES[surface].slice(0, 3)).map((sample) => (
               <li key={sample}>
                 <button type="button" className="ohf-starter" onClick={() => onStarter(sample)}>
@@ -556,11 +580,7 @@ function RunningTile({ run }: { run: ActiveRun }) {
   }, [run.startedAt]);
 
   return (
-    <div
-      className="ohf-skeleton"
-      role="status"
-      aria-label={`${run.modelLabel} rendering`}
-    >
+    <div className="ohf-skeleton" role="status" aria-label={`${run.modelLabel} rendering`}>
       <span className="ohf-skeleton-label">Rendering</span>
       <span className="ohf-skeleton-clock">
         {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}

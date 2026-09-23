@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import type { Surface } from "../catalog/types";
 import { browserStorage } from "./browser-storage";
 
 type PromptState = {
@@ -22,3 +23,13 @@ function createPromptStore(name: string) {
 
 export const useImagePrompt = createPromptStore("openhiggsfield.imagePrompt.v1");
 export const useVideoPrompt = createPromptStore("openhiggsfield.videoPrompt.v1");
+export const useAudioPrompt = createPromptStore("openhiggsfield.audioPrompt.v1");
+export const useTextPrompt = createPromptStore("openhiggsfield.textPrompt.v1");
+
+/** Each surface keeps its own words: a shot description is no use as lyrics. */
+export const PROMPT_STORES: Record<Surface, typeof useImagePrompt> = {
+  image: useImagePrompt,
+  video: useVideoPrompt,
+  audio: useAudioPrompt,
+  text: useTextPrompt,
+};

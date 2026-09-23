@@ -1910,6 +1910,16 @@
   margin-left: auto;
   flex-shrink: 0;
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* What the press is expected to cost, read just before it is made. */
+.ohf-cost {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tx3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .ohf-generate {
   height: 38px;
@@ -3658,7 +3668,7 @@ a.ohf-btn-solid {
     margin-left: 0;
   }
   .ohf-generate {
-    width: 100%;
+    flex: 1;
     height: 44px;
   }
   .ohf-generate-glyph {
@@ -3733,4 +3743,105 @@ a.ohf-btn-solid {
   .ohf-generate-sheen {
     display: none;
   }
+}
+
+/* ---------- sound and words ----------
+
+   Two kinds of run bring no picture of their own. Sound stands on the run's
+   artwork with a single mark; words are the tile. */
+.ohf-tile-sound {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  animation: ohf-fade 0.4s ease;
+}
+.ohf-tile-sound-ic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--plate);
+  color: var(--plate-ink);
+  border: 1px solid var(--line-2);
+  transition: scale 0.26s var(--ease-slide);
+}
+.ohf-tile:hover .ohf-tile-sound-ic {
+  scale: 1.06;
+}
+.ohf-tile[data-picked="true"] .ohf-tile-sound {
+  filter: brightness(0.82) saturate(0.94);
+}
+
+.ohf-tile-text {
+  position: absolute;
+  inset: 0;
+  padding: 16px 16px 0;
+  overflow: hidden;
+  color: var(--tx2);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 96%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 96%);
+  animation: ohf-fade 0.4s ease;
+}
+
+.ohf-viewer-sound {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 24px;
+}
+.ohf-viewer-audio {
+  position: relative;
+  width: min(100%, 520px);
+}
+
+.ohf-viewer-text {
+  position: absolute;
+  inset: 0;
+  padding: 28px 32px;
+  overflow-y: auto;
+  background: var(--s1);
+  color: var(--tx);
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* A free-text setting: the one popover whose control is typed into. */
+.ohf-setting-text {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: var(--s1);
+  color: var(--tx);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+textarea.ohf-setting-text {
+  min-height: 112px;
+  max-height: 260px;
+}
+.ohf-setting-text::placeholder {
+  color: var(--tx4);
+}
+.ohf-setting-text:focus-visible {
+  outline: none;
+  border-color: var(--accent-32);
+  box-shadow: 0 0 0 2px var(--accent-14);
+}
+.ohf-ctl[data-set="false"] .ohf-ctl-value {
+  color: var(--tx3);
 }
