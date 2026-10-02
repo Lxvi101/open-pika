@@ -3,6 +3,7 @@
    the platform schema: right route, no unknown or missing fields, legal values. */
 
 import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
 import { MODELS, parseSettings } from "../src/generation/catalog";
 import type { GenerationPlane, MediaRole } from "../src/generation/catalog";
 import { toPlatform } from "../src/generation/to-platform";
@@ -12,10 +13,20 @@ let bad = 0,
 for (const model of MODELS) {
   if (!model.operations) continue;
   for (const op of model.operations) {
-    // attach exactly the roles this op binds (required + requireAny first + all optional)
+    // Exercise schema-required bindings and one requireAny role. Attaching every
+    // optional role at once creates combinations the API itself forbids.
     const media: GenerationPlane["media"] = {};
+    const api = JSON.parse(
+      readFileSync(`scripts/pika-catalog/${op.apiId.replaceAll("/", "__")}.json`, "utf8"),
+    );
+    const requiredFields = new Set<string>(api.input_schema.required ?? []);
+    const firstAny = op.requireAny?.[0];
     for (const role of Object.keys(op.media ?? {}) as MediaRole[]) {
-      const count = op.media![role]!.many ? Math.min(2, model.roles[role] ?? 1) : 1;
+      const binding = op.media![role]!;
+      if (!binding.required && !requiredFields.has(binding.field.split(".")[0]!) && firstAny !== role) continue;
+      const schema = api.input_schema.properties[binding.field.split(".")[0]!];
+      const minimum = binding.many ? Math.max(1, schema?.minItems ?? 1) : 1;
+      const count = binding.many ? Math.min(minimum, model.roles[role] ?? 1) : 1;
       media[role] = Array.from({ length: count }, (_, i) => ({
         id: `${role}${i}`,
         role,
@@ -27,7 +38,13 @@ for (const model of MODELS) {
       model: model.id,
       prompt: { text: "line one\nline two" },
       media,
-      settings: parseSettings(model, {}),
+      settings: parseSettings(model, {
+        ...(model.id === "pika-video-compose"
+          ? { tracksJson: '[{"id":"main","type":"video","keyframes":[{"timestamp":0,"duration":5000,"url":"https://x.test/clip.mp4"}]}]' }
+          : {}),
+        ...(model.id === "seedance-2.5-finalize-draft" ? { draftJobId: "job-fixture" } : {}),
+        ...(model.id === "pika-speech" ? { voiceConsentAttested: true } : {}),
+      }),
     };
     let mapped;
     try {
@@ -101,5 +118,29 @@ for (const model of MODELS) {
     }
   }
 }
-console.log(n, "bodies built,", bad, "problems");
+// A start frame plus audio used to tie between two operations, silently
+// choosing image-to-video and dropping the user's driving recording.
+const seedance = MODELS.find((model) => model.id === "seedance-2.5")!;
+const audioPlane: GenerationPlane = {
+  model: seedance.id,
+  prompt: { text: "A woman speaking to camera, following @Audio1." },
+  media: { audio: [{ id: "audio", role: "audio", url: "https://x.test/voice.mp3" }] },
+  settings: parseSettings(seedance, {}),
+};
+const audioRequest = toPlatform(audioPlane);
+assert.equal(audioRequest.path, "/v1/media/bytedance/seedance-2.5/reference-to-video");
+assert.deepEqual(audioRequest.body.audio_urls, ["https://x.test/voice.mp3"]);
+assert.equal(audioRequest.body.generate_audio, true);
+assert.throws(() => toPlatform({
+  ...audioPlane,
+  media: { ...audioPlane.media, start: [{ id: "face", role: "start", url: "https://x.test/face.jpg" }] },
+}), /Use a reference image instead/);
+const referenceRequest = toPlatform({
+  ...audioPlane,
+  media: { ...audioPlane.media, reference: [{ id: "face", role: "reference", url: "https://x.test/face.jpg" }] },
+});
+assert.deepEqual(referenceRequest.body.audio_urls, ["https://x.test/voice.mp3"]);
+assert.deepEqual(referenceRequest.body.image_urls, ["https://x.test/face.jpg"]);
+
+console.log(n, "bodies built,", bad, "problems; audio routing regressions passed");
 process.exit(bad ? 1 : 0);

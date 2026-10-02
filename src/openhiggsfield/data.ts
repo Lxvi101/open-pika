@@ -110,6 +110,14 @@ export function pickSamples(surface: Surface, count = 3): string[] {
 const DURATION_KEY = /^duration/i;
 
 const SETTING_LABELS: Record<string, string> = {
+  tracksJson: "Timeline tracks",
+  draftJobId: "Draft job",
+  voiceConsentAttested: "Permission to clone voice",
+  omniReferenceTaskType: "Reference task",
+  activeSpeakerDetection: "Detect active speaker",
+  occlusionDetection: "Detect occlusion",
+  referenceVideoIndex: "Reference clip index",
+  targetFps: "Output frame rate",
   aspectRatio: "Aspect ratio",
   resolution: "Resolution",
   outputFormat: "Format",

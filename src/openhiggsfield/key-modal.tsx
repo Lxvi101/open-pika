@@ -81,7 +81,7 @@ export function KeyModal({
                   <a href="https://dev.pika.art/keys" target="_blank" rel="noreferrer">
                     dev.pika.art/keys
                   </a>
-                  . Generation is prepaid — add funds at{" "}
+                  . For prepaid billing, add funds at{" "}
                   <a href="https://dev.pika.art/billing" target="_blank" rel="noreferrer">
                     dev.pika.art/billing
                   </a>

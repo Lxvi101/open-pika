@@ -15,7 +15,7 @@
 - **Free & open-source** — no studio subscription, no vendor lock-in
 - **Self-hosted** — clone it, run it, change it, no storage account needed
 - **Your key** — generate with your own Pika API key
-- **154 operations** — 68 video, 34 image, 28 audio, 24 language models, one
+- **160 operations** — 74 video, 34 image, 28 audio, 24 language models, one
   catalog, one composer
 
 ---
@@ -31,12 +31,14 @@ Next.js 16 App Router · React 19 · plain CSS · Zustand · pnpm
 - **One composer for Video, Image, Audio and Text.** A single prompt bar
   drives all four surfaces; the model you pick decides which one runs.
   `⌘/Ctrl + Enter` submits.
-- **154 operations in the catalog** — 68 video, 34 image, 28 audio (music,
+- **160 operations in the catalog** — 74 video, 34 image, 28 audio (music,
   speech, sound effects, transcription, dubbing) and 24 language models, from
   Pika, ByteDance (Seedance, Seedream), Google (Veo, Gemini Omni, Nano Banana,
   Lyria), Kling, Alibaba (Wan, HappyHorse), MiniMax, Black Forest Labs, xAI,
   OpenAI, ElevenLabs, Ideogram, Recraft, Meta, Topaz, Sonilo, Anthropic,
   DeepSeek, Moonshot, Qwen, Tencent and Z.ai. Searchable picker.
+- **Operation validation.** Required prompts, reference minima, nested fields and incompatible choices are checked before submit against the expanded catalog schemas.
+- **Draft finalization.** Create a Seedance 2.5 draft, then select its completed job to render the final within seven days.
 - **Per-model settings.** Aspect ratio, resolution, duration, output format,
   audio, batch size, prompt enhancement — each model declares its own allow-list
   and the studio renders exactly that. No parallel hardcoded list.
@@ -45,12 +47,15 @@ Next.js 16 App Router · React 19 · plain CSS · Zustand · pnpm
   Pika's own upload endpoint and become the URLs the generate request carries.
 - **Asset picker.** Attach from your uploads library or from any finished run in
   history — two tabs over one library, filtered to the role's kind.
+- **Seedance prompt references.** Type `@` to see attached reference images,
+  video and audio; use the arrow keys to choose and `Tab` or `Enter` to insert
+  `@Image1`, `@Video1` or `@Audio1`. The attachment strip shows the same labels.
 - **Batch.** Up to 4 results per press. Models with a native count setting use it;
   the rest are submitted once per result, each clearing its own tile.
 - **Live run lifecycle.** Skeletons open in the grid on submit; video, image and
   audio jobs are polled every 4 seconds until they complete or fail, and each
   finished result blooms into place on its own clock. Language model runs
-  answer synchronously — no polling.
+  stream progressively into their tiles — no polling.
 
 ### Gallery
 
@@ -72,6 +77,11 @@ Next.js 16 App Router · React 19 · plain CSS · Zustand · pnpm
 
 ### State and errors
 
+- **Recovery.** An uncertain submit retains its original request and idempotency key in browser storage. Use Recover submissions to check the same request. Polling failures pause tracking; Resume tracking checks the existing job.
+- **Usage & billing.** Live public list-price quotes, balance and invoice-cycle capacity, daily spend, monthly reports and CSV exports are available. Job charges are displayed only after settlement and cover all outputs. Organization pricing may differ from public quotes.
+- **Remote erasure.** The viewer and upload picker offer explicit erasure with confirmation. Gallery deletion remains local and reversible.
+- **Webhooks.** The receiver verifies Standard Webhooks signatures and stores a deduplicated receipt before acknowledgement. Recent delivery status is available in Usage.
+
 - **History persists** in IndexedDB in this browser. Favorites are a
   deliberate keep and never age out of the cap. Result URLs belong to Pika's
   platform, so old history can outlive its CDN lifetime and show gaps.
@@ -80,7 +90,7 @@ Next.js 16 App Router · React 19 · plain CSS · Zustand · pnpm
 - **Your own Pika API key.** Entered in a modal, stored by a server action in
   an httpOnly cookie. A missing key opens the modal — it never fails silently.
   The topbar lamp states whether a key is held and whether a run is in flight.
-  Generation is prepaid: add funds at [dev.pika.art/billing](https://dev.pika.art/billing).
+  Prepaid generation requires funds; active invoice billing uses the remaining cycle capacity. Manage billing at [dev.pika.art/billing](https://dev.pika.art/billing).
 
 ---
 
@@ -184,3 +194,19 @@ OpenPika is forked from [wide-trace/open-higgsfield](https://github.com/wide-tra
 an open-source studio originally built for the Higgsfield AI API, and
 re-targeted to the [Pika API](https://dev.pika.art). Thanks to the original
 authors for the studio this is built on.
+
+### Lip-sync studio
+
+Seedance 2.5 has a dedicated **Lip sync** control: select a recording, trim its waveform, review an automatic MAI-Transcribe-2 transcript, and generate with matched timing and dialogue instructions. Optional Pro mode wraps the audio in a black MP4 with the output's aspect ratio. See [setup, Azure credentials, FFmpeg requirements and checks](docs/lip-sync.md).
+
+## API verification and webhooks
+
+`pnpm sync:catalog` refreshes expanded snapshots, pricing and the request schema bundle together. `pnpm check:catalog:live` compares local coverage with the current public index. The 160 callable operations exclude two schema-less Google image aliases.
+
+Run `pnpm typecheck` and the `check:validation`, `check:requests`, `check:operations`, `check:audio`, `check:runtime`, `check:recovery`, `check:upload-webhooks-stream`, `check:relay`, `check:pricing`, `check:cost`, and `check:references` commands for local verification. These checks use fixtures and mock responses; they do not execute paid generations.
+
+To receive Pika events, register this deployment’s `/api/webhooks` URL in the [Pika dashboard](https://dev.pika.art/webhooks) and set `PIKA_WEBHOOK_SECRET` to the supplied signing secret. Set `PIKA_WEBHOOK_STATE_DIR` to a persistent private volume for receipts across restarts. The bundled receipt store supports a single process; multiple instances need shared transactional storage for reliable deduplication. Webhooks record verified receipts; browser history continues polling jobs.
+
+The [2026-10-02 audit](docs/api-audit-2026-10-02.md) records the original findings and their implemented resolutions. Callable endpoint coverage does not imply every optional provider field has a dedicated composer control.
+
+Upload relay tickets are signed by this server, expire within five minutes, and are bound to the issuing key. A single host stores a private secret in `.data/upload-relay-secret` (or `PIKA_UPLOAD_RELAY_STATE_DIR`). Set the same random `PIKA_UPLOAD_RELAY_SECRET` of at least 32 bytes across replicas or ephemeral deployments.

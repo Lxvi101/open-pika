@@ -20,12 +20,14 @@ export function Topbar({
   busy,
   keyConfigured,
   onKeys,
+  onAccount,
 }: {
   view: GalleryView;
   onView: (next: GalleryView) => void;
   busy: boolean;
   keyConfigured: boolean;
   onKeys: () => void;
+  onAccount: () => void;
 }) {
   const tabsRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState<{ x: number; w: number } | null>(null);
@@ -126,6 +128,7 @@ export function Topbar({
           whether one is held and opens the modal that sets it — and its lamp is
           the studio's liveness, the one place accent moves. */}
       <div className="ohf-bar ohf-enter-1">
+        <button type="button" className="ohf-key" onClick={onAccount}>Usage</button>
         <button
           type="button"
           className="ohf-key"

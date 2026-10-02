@@ -155,6 +155,22 @@ const PIKA_SPEECH_VOICES = [
   "thunderous_revival_preacher",
 ] as const;
 
+function validatePikaSpeech(plane: GenerationPlane, body: Record<string, unknown>) {
+  if (plane.prompt.text.trim().length > 15000) {
+    throw new Error("Pika Speech scripts must be 15000 characters or fewer");
+  }
+  const cloning = (plane.media.audio?.length ?? 0) > 0;
+  if (cloning) {
+    if (body.voice_consent_attested !== true) {
+      throw new Error("Attest that you have permission to clone this voice before generating Pika Speech");
+    }
+    const cloneBody = { ...body };
+    delete cloneBody.voice_preset;
+    return cloneBody;
+  }
+  return body;
+}
+
 const pikaSpeech: ModelEntry = {
   id: "pika-speech",
   surface: "audio",
@@ -176,6 +192,7 @@ const pikaSpeech: ModelEntry = {
         voiceConsentAttested: "voice_consent_attested",
         seed: { field: "seed", as: "number" },
       },
+      build: validatePikaSpeech,
     },
   ],
 };

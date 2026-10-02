@@ -85,6 +85,8 @@ function slotsOf(runs: ActiveRun[], items: RunRecord[]): Slot[] {
           modelLabel: item.modelLabel,
           ratio: item.ratio,
           startedAt: item.createdAt,
+          text: item.text,
+          error: item.error,
         },
       });
       return;
@@ -581,7 +583,8 @@ function RunningTile({ run }: { run: ActiveRun }) {
 
   return (
     <div className="ohf-skeleton" role="status" aria-label={`${run.modelLabel} rendering`}>
-      <span className="ohf-skeleton-label">Rendering</span>
+      {run.text && <span className="ohf-stream-preview">{run.text}</span>}
+      <span className="ohf-skeleton-label">{run.error ? "Tracking paused" : run.surface === "text" ? "Writing" : "Rendering"}</span>
       <span className="ohf-skeleton-clock">
         {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
       </span>

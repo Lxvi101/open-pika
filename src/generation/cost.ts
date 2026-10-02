@@ -2,6 +2,7 @@ import { getModel } from "./catalog";
 import pricing from "./catalog/pricing.json";
 import type { GenerationPlane, MediaItem } from "./catalog/types";
 import { toPlatform } from "./to-platform";
+import { applyLipSync } from "./lipsync/adapters";
 
 type Tier = { spec: Record<string, string>; usd: number };
 type Component = { role: string; unit: string; per: number; included?: number; tiers: Tier[] };
@@ -55,11 +56,28 @@ export function estimateCost(plane: GenerationPlane, press: Press): CostEstimate
   let mapped;
   try {
     mapped = toPlatform(plane);
+    plane = applyLipSync(plane);
   } catch {
     return null; // nothing the platform would accept yet, so nothing to price
   }
   const components = PRICING[mapped.path.slice("/v1/media/".length)];
   if (!components?.length) return null;
+
+  /* Topaz counts delivered pixels for Proteus and output frames for Starlight.
+     The request does not carry final dimensions or an output-frame count, so a
+     numeric estimate would invent usage. Show the billing basis until a quote
+     is available. */
+  if (components.some((component) =>
+    component.unit === "output_megapixel" || component.unit.startsWith("output_frame_"),
+  )) {
+    const modelName = String(mapped.body.model ?? "proteus");
+    return {
+      kind: "rate",
+      label: modelName === "proteus"
+        ? "Usage-based · output megapixels; final cost requires platform quote"
+        : "Usage-based · output frames and size tier; final cost requires platform quote",
+    };
+  }
 
   let usd = 0;
   let approximate = false;
@@ -216,7 +234,11 @@ function quantityOf(
     case "video_output_token": {
       const area = SEEDANCE_AREA[String(body.resolution ?? "").toLowerCase()];
       if (getModel(plane.model).vendor !== "bytedance" || !area || !seconds) return undefined;
-      return { value: (area * SEEDANCE_FPS * seconds * outputs) / 1024, approximate: true };
+      // Seedance 2.5's published nominal token rate doubles with video input
+      // (43,200 vs 21,600 tokens/s at 720p). The lower per-token tier alone
+      // would incorrectly make the Pro carrier appear cheaper.
+      const videoFactor = plane.model === "seedance-2.5" && plane.media.video?.length ? 2 : 1;
+      return { value: (area * SEEDANCE_FPS * seconds * outputs * videoFactor) / 1024, approximate: true };
     }
     default:
       return undefined;
@@ -230,6 +252,16 @@ function scale(value: number | undefined, by: number): number | undefined {
 /** Length of what comes back: the duration the request names, else the length
     of the clip or track it works on — an edit, an upscale, a lipsync. */
 function outputSeconds(body: Record<string, unknown>, plane: GenerationPlane): number | undefined {
+  if (Array.isArray(body.tracks)) {
+    const ends = body.tracks.flatMap((track) =>
+      Array.isArray((track as { keyframes?: unknown[] })?.keyframes)
+        ? (track as { keyframes: { timestamp?: unknown; duration?: unknown }[] }).keyframes.map(
+            (frame) => Number(frame.timestamp) + Number(frame.duration),
+          )
+        : [],
+    );
+    if (ends.length && ends.every(Number.isFinite)) return Math.max(...ends) / 1000;
+  }
   /* Keyframes: one transition between each pair of frames. */
   const transition = Number(body.transition_duration_s);
   if (transition > 0 && Array.isArray(body.images)) {

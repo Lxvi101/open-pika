@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
 
+import { apiErrorMessage } from "./api-result";
 import { ROLE_KINDS, ROLE_LABELS, defaultRole, roleNoun, rolesOf, type AssetKind } from "./data";
 import type { RunRecord } from "./history";
 import { AssetsIcon, AudioIcon, CheckIcon, CloseIcon, PlayBadgeIcon, UploadIcon } from "./icons";
@@ -42,6 +43,7 @@ export function AssetPicker({
   onUpload,
   onApply,
   onClose,
+  onErase,
 }: {
   model: ModelEntry;
   /** The current surface's attachments. They are what the panel opens holding:
@@ -54,7 +56,11 @@ export function AssetPicker({
   onUpload: (role: MediaRole) => void;
   onApply: (role: MediaRole, urls: string[]) => void;
   onClose: () => void;
+  onErase: (url: string) => Promise<void>;
 }) {
+  const [eraseUrl, setEraseUrl] = useState<string | null>(null);
+  const [erasing, setErasing] = useState(false);
+  const [eraseError, setEraseError] = useState<string | null>(null);
   const roles = rolesOf(model);
   const [role, setRole] = useState<MediaRole>(() => defaultRole(model));
   /* null until the visitor picks a shelf: the panel opens on whichever one
@@ -305,19 +311,17 @@ export function AssetPicker({
             {assets.map((asset) => {
               const on = picked.has(asset.url);
               return (
-                <AssetTile
-                  key={asset.url}
-                  asset={asset}
-                  picked={on}
-                  blocked={!on && room === 0}
-                  onToggle={toggle}
-                />
+                <div key={asset.url} className="ohf-upload-asset">
+                  <AssetTile asset={asset} picked={on} blocked={!on && room === 0} onToggle={toggle} />
+                  {shelf === "uploads" && <button type="button" className="ohf-btn-quiet" aria-label={`Erase upload from Pika — ${asset.title}`} onClick={() => { setEraseUrl(asset.url); setEraseError(null); }}>Erase</button>}
+                </div>
               );
             })}
           </div>
         )}
       </div>
 
+      {eraseUrl && <div className="ohf-recovery"><span>Erase this uploaded file from Pika? This cannot be undone.</span><button className="ohf-btn-solid" disabled={erasing} onClick={() => { setErasing(true); void onErase(eraseUrl).then(() => { setSelected((prev) => prev.filter((url) => url !== eraseUrl)); setEraseUrl(null); }).catch((error) => setEraseError(apiErrorMessage(error))).finally(() => setErasing(false)); }}>Confirm erasure</button><button className="ohf-btn-quiet" disabled={erasing} onClick={() => setEraseUrl(null)}>Cancel</button>{eraseError && <p role="alert">{eraseError}</p>}</div>}
       <div className="ohf-assets-foot">
         <span className="ohf-assets-tally">
           {selected.length} of {max} {roleNoun(role, max)}

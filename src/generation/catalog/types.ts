@@ -82,6 +82,7 @@ export type ModelEntry = {
 };
 
 export type GenerationPlane = {
+  lipSync?: import("../lipsync/types").LipSyncReference;
   model: string;
   prompt: { text: string };
   media: Partial<Record<MediaRole, MediaItem[]>>;

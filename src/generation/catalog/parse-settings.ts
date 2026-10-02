@@ -15,13 +15,19 @@ export function parseSettings(
       continue;
     }
     if (field.type === "range") {
-      const legal = typeof value === "number" && value >= field.min && value <= field.max;
-      out[key] = legal ? value : field.default;
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        out[key] = field.default;
+        continue;
+      }
+      const step = field.step ?? 1;
+      const clamped = Math.min(field.max, Math.max(field.min, value));
+      const stepped = field.min + Math.round((clamped - field.min) / step) * step;
+      const precision = Math.min(12, Math.max(0, (String(step).split(".")[1] ?? "").length));
+      out[key] = Math.min(field.max, Math.max(field.min, Number(stepped.toFixed(precision))));
       continue;
     }
     if (field.type === "text") {
-      const text = typeof value === "string" ? value : field.default;
-      out[key] = field.maxLength === undefined ? text : text.slice(0, field.maxLength);
+      out[key] = typeof value === "string" ? value : field.default;
       continue;
     }
     out[key] = typeof value === "boolean" ? value : field.default;

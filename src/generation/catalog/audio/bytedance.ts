@@ -1,4 +1,25 @@
-import type { ModelEntry } from "../types";
+import type { GenerationPlane, ModelEntry } from "../types";
+
+function validateSeedAudio(plane: GenerationPlane, body: Record<string, unknown>) {
+  const hasAudio = (plane.media.audio?.length ?? 0) > 0;
+  const hasImage = (plane.media.reference?.length ?? 0) > 0;
+  const hasPreset = body.voice !== undefined;
+  const variant = body.model ?? (hasPreset ? "seed-audio-1.0" : "seed-audio-1.0-multilingual");
+
+  if (plane.prompt.text.trim().length > 3000) {
+    throw new Error("Seed Audio prompts must be 3000 characters or fewer");
+  }
+  if (hasImage && (hasAudio || hasPreset)) {
+    throw new Error("Seed Audio image references cannot be combined with audio references or a preset voice");
+  }
+  if (hasPreset && variant !== "seed-audio-1.0") {
+    throw new Error("Seed Audio preset voices require the seed-audio-1.0 base variant");
+  }
+  if (hasAudio && variant !== "seed-audio-1.0-multilingual") {
+    throw new Error("Seed Audio cloning references require the multilingual variant");
+  }
+  return body;
+}
 
 /* Base-variant preset speaker library (`model: "seed-audio-1.0"`); the
    multilingual variant clones voices from `audio_urls` instead and has no
@@ -203,6 +224,7 @@ export const seedAudio1: ModelEntry = {
         volume: "volume",
         pitch: "pitch",
       },
+      build: validateSeedAudio,
     },
   ],
 };

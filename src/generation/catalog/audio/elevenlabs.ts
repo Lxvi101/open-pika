@@ -68,15 +68,22 @@ const DIALOGUE_VOICE_B = "pNInz6obpgDQGcFmaJgB";
    the required field gets written — see the report for that warning. */
 function dialogueTurns(plane: GenerationPlane, body: Record<string, unknown>) {
   const voices = [
-    String(plane.settings.voice1 ?? DIALOGUE_VOICE_A),
-    String(plane.settings.voice2 ?? DIALOGUE_VOICE_B),
+    String(plane.settings.voice1 ?? DIALOGUE_VOICE_A).trim(),
+    String(plane.settings.voice2 ?? DIALOGUE_VOICE_B).trim(),
   ];
-  const inputs = plane.prompt.text
+  if (voices.some((voice) => !voice)) {
+    throw new Error("Eleven Text to Dialogue requires a voice ID for each speaker");
+  }
+  const turns = plane.prompt.text
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 10)
-    .map((text, index) => ({ text, voice_id: voices[index % 2] }));
+    .filter(Boolean);
+  if (turns.length < 1) throw new Error("Add at least one dialogue turn");
+  if (turns.length > 10) throw new Error("Eleven Text to Dialogue supports at most 10 turns");
+  if (turns.some((text) => text.length > 3000)) {
+    throw new Error("Each Eleven Text to Dialogue turn must be 3000 characters or fewer");
+  }
+  const inputs = turns.map((text, index) => ({ text, voice_id: voices[index % 2] }));
   return { ...body, inputs };
 }
 
@@ -190,30 +197,28 @@ export const elevenVoiceDubbing: ModelEntry = {
   vendor: "elevenlabs",
   description: "dubs a video (or audio track) into another language",
   prompt: "none",
-  roles: { video: 1 },
+  roles: { audio: 1, video: 1 },
   settings: {
-    targetLang: { type: "text", default: "es", placeholder: "Target language code" },
-    sourceLang: { type: "text", default: "", placeholder: "Auto-detect" },
+    targetLang: { type: "text", default: "es", placeholder: "Target language code", maxLength: 8 },
+    sourceLang: { type: "text", default: "", placeholder: "Auto-detect", maxLength: 8 },
     /* 0 is not a meaningful speaker count, so it doubles as "let the platform
        auto-detect speakers" and is omitted from the wire at that value. */
     numSpeakers: { type: "range", min: 0, max: 20, default: 0 },
     highestResolution: { type: "boolean", default: false },
     dropBackgroundAudio: { type: "boolean", default: false },
   },
-  operations: [
-    {
-      apiId: "elevenlabs/eleven-voice-dubbing/dubbing",
-      prompt: null,
-      media: { video: { field: "source_url", required: true, durationField: "duration_seconds" } },
-      params: {
-        targetLang: "target_lang",
-        sourceLang: "source_lang",
-        numSpeakers: { field: "num_speakers", omit: [0] },
-        highestResolution: "highest_resolution",
-        dropBackgroundAudio: "drop_background_audio",
-      },
+  operations: (["audio", "video"] as const).map((role) => ({
+    apiId: "elevenlabs/eleven-voice-dubbing/dubbing",
+    prompt: null,
+    media: { [role]: { field: "source_url", required: true, durationField: "duration_seconds" } },
+    params: {
+      targetLang: "target_lang",
+      sourceLang: "source_lang",
+      numSpeakers: { field: "num_speakers", omit: [0] },
+      highestResolution: "highest_resolution",
+      dropBackgroundAudio: "drop_background_audio",
     },
-  ],
+  })),
 };
 
 export const elevenVoiceIsolation: ModelEntry = {

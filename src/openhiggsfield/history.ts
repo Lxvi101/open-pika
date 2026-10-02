@@ -1,5 +1,6 @@
 import { browserLegacy, defaultKv, type Kv, type LegacyStore } from "./idb";
-import type { Surface } from "@/generation/catalog";
+import type { GenerationPlane, Surface } from "@/generation/catalog";
+import type { GenerationStatus } from "@/generation/platform";
 
 export type RunKind = "image" | "video" | "audio" | "text";
 
@@ -26,6 +27,11 @@ export interface RunRecord {
       refresh can resume the poll; completed rows keep it for the same id. */
   requestId?: string;
   error?: string;
+  errorCode?: string;
+  retryAfter?: number;
+  usage?: GenerationStatus["usage"];
+  billing?: GenerationStatus["billing"];
+  media?: GenerationPlane["media"];
   /** Layered-gradient fallback used while media loads or when a run failed. */
   art: string;
   createdAt: number;
@@ -53,22 +59,23 @@ export async function loadHistory(
   return mergeHistory(stored, fromLegacy);
 }
 
+const historyWrites = new WeakMap<Kv, Promise<void>>();
+
 export async function saveHistory(
   records: RunRecord[],
   kv: Kv = defaultKv(),
   legacy: LegacyStore | undefined = browserLegacy(),
+  requireDurable = false,
 ): Promise<void> {
   const next = capHistory(records.filter(isRunRecord));
-  try {
-    await kv.set(HISTORY_KEY, next);
-  } catch {
-    /* private mode or a denied store */
-  }
-  try {
-    legacy?.setItem(LEGACY_HISTORY_KEY, JSON.stringify(next));
-  } catch {
-    /* quota or a denied store */
-  }
+  const write = (historyWrites.get(kv) ?? Promise.resolve()).catch(() => {}).then(async () => {
+    let saved = false;
+    try { await kv.set(HISTORY_KEY, next); saved = true; } catch { /* Try the fallback. */ }
+    try { if (legacy) { legacy.setItem(LEGACY_HISTORY_KEY, JSON.stringify(next)); saved = true; } } catch { /* Storage can be denied. */ }
+    if (requireDurable && !saved) throw new Error("Could not save this job to history; its recovery key has been retained.");
+  });
+  historyWrites.set(kv, write);
+  await write;
 }
 
 /** Session rows win on id collision so a generate that landed before IDB

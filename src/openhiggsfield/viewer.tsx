@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { apiErrorMessage } from "./api-result";
 import { settingLabel, settingValueLabel } from "./data";
 import { fileNameFor, saveFile, saveText } from "./download";
 import { timeAgo, type RunRecord } from "./history";
@@ -47,6 +48,8 @@ export function Viewer({
   onDelete,
   onPrev,
   onNext,
+  onEraseRemote,
+  onFinalize,
 }: {
   item: RunRecord;
   onClose: () => void;
@@ -56,9 +59,14 @@ export function Viewer({
   /* Absent at the ends of the scope, which is how the walk stops. */
   onPrev?: () => void;
   onNext?: () => void;
+  onEraseRemote?: () => Promise<void>;
+  onFinalize?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmErase, setConfirmErase] = useState(false);
+  const [erasing, setErasing] = useState(false);
+  const [eraseError, setEraseError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [copied, setCopied] = useState(false);
   /* What the exit was for. Captured at the click so a re-render mid-flight
@@ -291,6 +299,7 @@ export function Viewer({
                     <dd>{value}</dd>
                   </div>
                 ))}
+                {item.billing && <div className="ohf-viewer-fact"><dt>Job charge</dt><dd>${(item.billing.charge_micro_usd / 1_000_000).toFixed(4)} · all outputs</dd></div>}
                 <div className="ohf-viewer-fact">
                   <dt>Created</dt>
                   <dd>{CREATED.format(item.createdAt)}</dd>
@@ -300,6 +309,12 @@ export function Viewer({
           </div>
 
           <footer className="ohf-viewer-side-foot">
+            {onFinalize && <button className="ohf-btn-solid" onClick={() => leave(onFinalize)}>Finalize draft</button>}
+            {onEraseRemote && <div className="ohf-remote-erase">
+              {confirmErase ? <><p>Erase this job’s media and prompt from Pika? All outputs will be removed. This cannot be undone.</p><button className="ohf-btn-solid" disabled={erasing} onClick={() => { setErasing(true); setEraseError(null); void onEraseRemote().catch((error) => setEraseError(apiErrorMessage(error))).finally(() => setErasing(false)); }}>{erasing ? "Erasing…" : "Confirm erasure"}</button><button className="ohf-btn-quiet" disabled={erasing} onClick={() => setConfirmErase(false)}>Cancel</button></> : <button className="ohf-btn-quiet" onClick={() => setConfirmErase(true)}>Erase from Pika</button>}
+              {eraseError && <p role="alert">{eraseError}</p>}
+            </div>}
+
             {/* Recreate is the loop the studio is built on: it loads this run's
                 model, dials and words back into the composer. */}
             <button

@@ -64,7 +64,6 @@ export const languageModels: readonly ModelEntry[] = [
     "google/gemini-3.1-pro",
     "genai",
     "Gemini 3.1 Pro",
-    "Google's multimodal model with an extended context window",
   ),
   llm("google/gemini-3.8-flash", "genai", "Gemini 3.8 Flash"),
   llm("google/gemini-3.7-flash", "genai", "Gemini 3.7 Flash"),

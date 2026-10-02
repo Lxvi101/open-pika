@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
+import { getGenerationQuote } from "@/generation/actions";
+import { generationValidation } from "@/generation/validation";
 import { parseSettings } from "@/generation/catalog";
 import type { MediaItem, ModelEntry, Surface } from "@/generation/catalog";
 import { estimateCost, formatCost } from "@/generation/cost";
 import { durationOf, planeOf } from "@/generation/plane";
+import { applyLipSync, lipSyncAdapter } from "@/generation/lipsync/adapters";
+import { lipSyncPreview, lipSyncReady, useLipSync } from "@/generation/lipsync/store";
+import { completeReference, promptReferences, referenceQuery, supportsReferences } from "@/generation/references";
+import type { PromptReference, ReferenceQuery } from "@/generation/references";
 import { MAX_BATCH, useActive } from "@/generation/stores/active";
 import { PROMPT_STORES } from "@/generation/stores/prompt";
 import { useSettings } from "@/generation/stores/settings";
@@ -19,6 +25,8 @@ import { ArrowUpIcon, CaretDownIcon, CloseIcon, MinusIcon, PlusIcon, WarningIcon
 import { MediaStrip, useMediaTray } from "./media-tray";
 import { ModelIcon, modelIconSrc } from "./model-icon";
 import { ModelPicker } from "./model-picker";
+import { ReferenceSuggestions } from "./reference-suggestions";
+import { LipSyncControl } from "./lip-sync-editor";
 import { SettingPill, SettingPopover } from "./settings";
 
 /* Overlay ids: the two fixed panels, or one setting addressed by its catalog
@@ -90,6 +98,9 @@ export function Composer({
   const settings = useSettings();
   const values = parseSettings(model, settings.byModel[model.id] ?? {});
   const tray = useMediaTray(model, onError);
+  const lengths = useClipLengths(tray.items);
+  const lip = useLipSync();
+  const lipActive = lip.enabled && Boolean(lipSyncAdapter(model.id));
 
   const [overlay, setOverlay] = useState<string | null>(null);
   const [anchor, setAnchor] = useState({ x: 0, y: 0 });
@@ -97,14 +108,67 @@ export function Composer({
   const dockRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const referencesId = useId();
+  const [mention, setMention] = useState<ReferenceQuery | null>(null);
+  const [activeReference, setActiveReference] = useState(0);
+  const dismissedMention = useRef<string | null>(null);
+  const mentionSelection = useRef<string | null>(null);
+  const referencesEnabled = supportsReferences(model);
+  let referenceItems = tray.items;
+  if (lipActive) {
+    try {
+      const effective = applyLipSync(lipSyncPreview(planeOf(model, prompt.text, tray.items.map((item) => ({ ...item, duration: item.duration ?? lengths[item.url] })), values), lip));
+      referenceItems = Object.values(effective.media).flat();
+    } catch { /* Invalid combinations are reported before generation. */ }
+  }
+  const references = promptReferences(model, referenceItems);
+  const matches = mention
+    ? references.filter((entry) => entry.token.slice(1).toLowerCase().startsWith(mention.query.toLowerCase()))
+    : [];
+  const referenceIndex = Math.min(activeReference, Math.max(0, matches.length - 1));
+  const mentionsOpen = referencesEnabled && mention !== null && !selecting && overlay === null;
+
+  function updateMention(element: HTMLTextAreaElement) {
+    const next = referencesEnabled ? referenceQuery(element.value, element.selectionStart, element.selectionEnd) : null;
+    const key = `${element.value}:${element.selectionStart}:${element.selectionEnd}`;
+    if (dismissedMention.current === key || mentionSelection.current === key) return;
+    mentionSelection.current = key;
+    dismissedMention.current = null;
+    setMention(next);
+    setActiveReference(0);
+  }
+
+  function dismissMention() {
+    const element = promptRef.current;
+    if (element) dismissedMention.current = `${element.value}:${element.selectionStart}:${element.selectionEnd}`;
+    setMention(null);
+  }
+
+  function insertReference(reference: PromptReference) {
+    if (!mention) return;
+    const result = completeReference(prompt.text, mention, reference.token);
+    prompt.setText(result.text);
+    setMention(null);
+    // Restore the caret after React has applied the controlled textarea value.
+    requestAnimationFrame(() => {
+      const element = promptRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(result.caret, result.caret);
+      dismissedMention.current = `${result.text}:${result.caret}:${result.caret}`;
+    });
+  }
+
+  useEffect(() => {
+    setMention(null);
+    dismissedMention.current = null;
+    mentionSelection.current = null;
+  }, [model.id, focusNonce]);
   /* A run in flight is not a lock: it holds its own tile in the grid, so the
      only thing that can stop a press is having nothing to say — or, for a tool
      that works on media alone, nothing to work on. */
   const wordless = model.prompt === "none";
-  const needsWords = !wordless && model.prompt !== "optional";
-  const disabled = needsWords
-    ? prompt.text.trim().length === 0
-    : tray.items.length === 0 && prompt.text.trim().length === 0;
+
 
   /* One batch control, two mechanisms. A model that declares its own
      results-per-request gets that setting written; the rest are submitted once
@@ -113,14 +177,29 @@ export function Composer({
   const native = countSetting(model);
   const counts = native ? native.counts : STUDIO_COUNTS;
   const batchValue = native ? Number(values[native.key]) || counts[0]! : batch;
-  const settingKeys = Object.keys(model.settings).filter((key) => key !== native?.key);
+  const settingKeys = Object.keys(model.settings).filter((key) => key !== native?.key &&
+    !(lipActive && (key === "duration" || key === "generateAudio" || key === "omniReferenceTaskType" || (lip.pro && key === "aspectRatio"))));
 
   /* Priced from the very request a press would send, so the figure moves with
      every dial. The studio's own batch is that many requests; a model's own
      count is one request asking for that many results. */
-  const lengths = useClipLengths(tray.items);
   const modelSettings = settings.byModel[model.id];
-  const estimate = useMemo(() => {
+  const quotePlane = useMemo(() => lipSyncPreview(planeOf(model, prompt.text, tray.items.map((item) => ({ ...item, duration: item.duration ?? lengths[item.url] })), modelSettings ?? {}), lip), [model, prompt.text, tray.items, lengths, modelSettings, lip]);
+  const validation = model.chat ? (prompt.text.trim() ? null : "Write a prompt first") : generationValidation(lipSyncPreview(quotePlane, lip));
+  const disabled = validation !== null || tray.uploading || (lipActive && !lipSyncReady(lip));
+  const [liveQuote, setLiveQuote] = useState<{ key: string; micro: number } | null>(null);
+  const quoteKey = JSON.stringify(quotePlane);
+  useEffect(() => {
+    if (model.chat || validation || lipActive) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      void getGenerationQuote(quotePlane).then((result) => {
+        if (live && result.ok) setLiveQuote({ key: quoteKey, micro: result.value.micro_usd });
+      }).catch(() => {});
+    }, 650);
+    return () => { live = false; clearTimeout(timer); };
+  }, [quoteKey, model.chat, validation, quotePlane, lipActive]);
+  const publishedEstimate = useMemo(() => {
     const items = tray.items.map((item) => ({
       ...item,
       duration: item.duration ?? lengths[item.url],
@@ -129,8 +208,10 @@ export function Composer({
     const press = native
       ? { requests: 1, outputs: batchValue }
       : { requests: model.surface === "text" ? 1 : batch, outputs: 1 };
-    return estimateCost(plane, press);
-  }, [model, prompt.text, tray.items, lengths, modelSettings, native, batchValue, batch]);
+    return estimateCost(lipSyncPreview(plane, lip), press);
+  }, [model, prompt.text, tray.items, lengths, modelSettings, native, batchValue, batch, lip]);
+  const hasLiveQuote = !lipActive && liveQuote?.key === quoteKey;
+  const estimate = hasLiveQuote ? { kind: "total" as const, usd: liveQuote!.micro / 1_000_000 * (native ? 1 : batch), approximate: false } : publishedEstimate;
 
   function setBatchValue(next: number) {
     if (!native) {
@@ -238,10 +319,8 @@ export function Composer({
   const attachLabel = tray.allFull ? "Change the inputs" : "Add an input";
   const settingKey = overlay?.startsWith(SETTING) ? overlay.slice(SETTING.length) : null;
   const generateLabel = batchValue > 1 ? `Generate ${batchValue} results` : "Generate";
-  const generateTip = disabled
-    ? needsWords
-      ? "Write a prompt first"
-      : "Attach an input first"
+  const generateTip = lipActive && !lipSyncReady(lip) ? "Prepare lip-sync audio and dialogue first" : disabled
+    ? validation ?? "Wait for the upload to finish"
     : `${generateLabel} · ${shortcut ?? "⌘↵"}`;
   /* A language model answers once per press; a batch of identical answers is
      spend with nothing to show for it. */
@@ -290,6 +369,7 @@ export function Composer({
             uploading={tray.uploading}
             onUpload={tray.begin}
             onApply={tray.apply}
+            onErase={tray.erase}
             onClose={() => setOverlay(null)}
           />
         )}
@@ -310,6 +390,16 @@ export function Composer({
             and the toolbar rises exactly where the composer's rail was. */}
         <div className="ohf-swap">
           <div className="ohf-composer">
+            {mentionsOpen && (
+              <ReferenceSuggestions
+                id={referencesId}
+                references={matches}
+                active={referenceIndex}
+                empty={references.length > 0 ? "No matching reference." : "Attach reference images, video or audio with + first. Start/end frames use image-to-video."}
+                onPick={insertReference}
+                onActive={setActiveReference}
+              />
+            )}
             <MediaStrip model={model} />
 
             {/* The attachment sits beside the words it belongs to, on the same
@@ -342,18 +432,53 @@ export function Composer({
                   puts the open control away. Pointer and focus both, because a
                   button click does not move focus on every platform — the field
                   can still hold it while a popover stands open. */}
+              {model.settings.draftJobId && <label className="ohf-draft-select">Saved draft
+                <select aria-label="Saved draft" className="ohf-input" value={String(values.draftJobId ?? "")} onChange={(event) => settings.set(model.id, { ...values, draftJobId: event.target.value })}>
+                  <option value="">Choose a completed draft or enter its job ID in settings</option>
+                  {[...new Map(history.filter((row) => row.status === "completed" && row.modelId === "seedance-2.5" && row.settings?.draft === true && Date.now() - row.createdAt < 7 * 86400000).map((row) => [row.requestId ?? row.id, row])).values()].map((row) => <option key={row.requestId ?? row.id} value={row.requestId ?? row.id}>{row.prompt.slice(0, 60) || row.modelLabel} · {new Date(row.createdAt).toLocaleDateString()}</option>)}
+                  {Boolean(values.draftJobId) && !history.some((row) => row.requestId === values.draftJobId) && <option value={String(values.draftJobId)}>{String(values.draftJobId)}</option>}
+                </select>
+              </label>}
               <textarea
                 ref={promptRef}
                 className="ohf-prompt"
                 rows={1}
                 value={prompt.text}
-                placeholder={wordless ? PROMPT_UNUSED : PROMPT_PLACEHOLDERS[surface]}
+                placeholder={wordless ? PROMPT_UNUSED : referencesEnabled ? "Describe your video… type @ to reference an input" : PROMPT_PLACEHOLDERS[surface]}
                 disabled={wordless}
                 aria-label="Prompt"
+                role={referencesEnabled ? "combobox" : undefined}
+                aria-autocomplete={referencesEnabled ? "list" : undefined}
+                aria-expanded={referencesEnabled ? mentionsOpen : undefined}
+                aria-controls={mentionsOpen ? referencesId : undefined}
+                aria-activedescendant={mentionsOpen && matches.length > 0 ? `${referencesId}-${referenceIndex}` : undefined}
                 onPointerDown={() => setOverlay(null)}
                 onFocus={() => setOverlay(null)}
-                onChange={(event) => prompt.setText(event.target.value)}
+                onBlur={dismissMention}
+                onSelect={(event) => updateMention(event.currentTarget)}
+                onChange={(event) => {
+                  prompt.setText(event.target.value);
+                  updateMention(event.currentTarget);
+                }}
                 onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing) return;
+                  if (mentionsOpen && event.key === "Escape") {
+                    event.preventDefault();
+                    dismissMention();
+                    return;
+                  }
+                  if (mentionsOpen && matches.length > 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setActiveReference((referenceIndex + (event.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length);
+                      return;
+                    }
+                    if (event.key === "Tab" || event.key === "Enter") {
+                      event.preventDefault();
+                      insertReference(matches[referenceIndex]!);
+                      return;
+                    }
+                  }
                   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                     event.preventDefault();
                     if (!disabled) onGenerate();
@@ -386,6 +511,7 @@ export function Composer({
                   </span>
                 </button>
 
+                <LipSyncControl modelId={model.id} />
                 {settingKeys.map((key) => (
                   <SettingPill
                     key={key}
@@ -406,9 +532,9 @@ export function Composer({
                 {estimate && (
                   <span
                     className="ohf-cost"
-                    aria-label={`Estimated cost: ${formatCost(estimate)}`}
+                    aria-label={`${hasLiveQuote ? "Quoted" : "Estimated"} cost: ${formatCost(estimate)}`}
                     title={
-                      estimate.kind === "total"
+                      hasLiveQuote ? "Live Pika list-price quote; organization pricing and final usage may differ" : estimate.kind === "total"
                         ? "Estimated cost of this press, from the platform's published prices"
                         : "Billed by usage the platform counts after the run"
                     }

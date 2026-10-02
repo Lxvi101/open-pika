@@ -1,4 +1,5 @@
 import { getModel } from "./catalog";
+import { applyLipSync, lipSyncAdapter } from "./lipsync/adapters";
 import type { GenerationPlane, MediaRole, Operation, ParamSpec } from "./catalog/types";
 
 type Mapped = { path: string; body: Record<string, unknown> };
@@ -6,10 +7,26 @@ type Mapped = { path: string; body: Record<string, unknown> };
 const ROLES: readonly MediaRole[] = ["start", "end", "reference", "video", "audio"];
 
 export function toPlatform(plane: GenerationPlane): Mapped {
+  const adapter = plane.lipSync ? lipSyncAdapter(plane.model) : undefined;
+  plane = applyLipSync(plane);
   const model = getModel(plane.model);
   if (!model.operations?.length) throw new Error(`No platform operation for ${plane.model}`);
   const operation = pickOperation(model.operations, plane);
-  return { path: `/v1/media/${operation.apiId}`, body: buildBody(operation, plane) };
+  if (adapter && operation.apiId !== adapter.apiId) throw new Error("Invalid lip-sync operation.");
+  const ignored = ROLES.filter(
+    (role) => (plane.media[role]?.length ?? 0) > 0 && !operation.media?.[role],
+  );
+  if (ignored.length) {
+    const guidance = model.vendor === "bytedance" && plane.media.audio?.length &&
+      (plane.media.start?.length || plane.media.end?.length)
+      ? " Use a reference image instead of start/end frames when attaching audio."
+      : " Remove the incompatible attachments or choose another model.";
+    throw new Error(
+      `${model.label} cannot use this combination of attachments; ${ignored.join(" and ")} would be ignored.${guidance}`,
+    );
+  }
+  const body = buildBody(operation, plane);
+  return { path: `/v1/media/${operation.apiId}`, body: adapter ? adapter.finalize(body) : body };
 }
 
 /** The operation the attachments ask for. One that binds every attached role

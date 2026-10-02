@@ -24,12 +24,14 @@ import { googleVideo } from "./video/google";
 import { klingVideo } from "./video/kling";
 import { minimaxVideo } from "./video/minimax";
 import { pikaVideo } from "./video/pika";
+import { syncVideo } from "./video/sync";
 import { topazVideo } from "./video/topaz";
 import { xaiVideo } from "./video/x-ai";
 
 /* Picker order within a surface: the house models lead, then the rest. */
 export const MODELS: readonly ModelEntry[] = [
   ...pikaVideo,
+  ...syncVideo,
   ...bytedanceVideo,
   ...googleVideo,
   ...klingVideo,

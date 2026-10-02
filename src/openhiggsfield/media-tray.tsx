@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 
 import type { MediaItem, MediaRole, ModelEntry } from "@/generation/catalog";
 import { MEDIA_STORES } from "@/generation/stores/media";
+import { deleteRemoteUpload } from "@/generation/actions";
+import { unwrapResult } from "./api-result";
 import { uploadMedia } from "@/generation/upload";
+import { promptReferences } from "@/generation/references";
 
 import { ROLE_ACCEPT, ROLE_LABELS, ROLE_TAGS, UPLOAD_LIMIT_MB, rolesOf } from "./data";
 import { AudioIcon, CloseIcon, VideoIcon } from "./icons";
@@ -44,6 +47,7 @@ export interface MediaTray {
   /** Make the role's inputs exactly these URLs — the picker hands back the set
       it edited, so one press both attaches and detaches. */
   apply: (role: MediaRole, urls: string[]) => void;
+  erase: (url: string) => Promise<void>;
 }
 
 export function useMediaTray(
@@ -163,13 +167,24 @@ export function useMediaTray(
     }
   }
 
-  return { roles, items: media.items, uploads, staged, uploading, allFull, input, begin, apply };
+  async function erase(url: string) {
+    unwrapResult(await deleteRemoteUpload(url));
+    const next = uploads.filter((row) => row.url !== url);
+    setUploads(next);
+    await saveUploads(next);
+    if (staged === url) setStaged(null);
+    for (const store of Object.values(MEDIA_STORES)) {
+      store.setState({ items: store.getState().items.filter((item) => item.url !== url) });
+    }
+  }
+  return { roles, items: media.items, uploads, staged, uploading, allFull, input, begin, apply, erase };
 }
 
 /** Attached inputs, above the prompt — the frames read before the words do. */
 export function MediaStrip({ model }: { model: ModelEntry }) {
   const media = useMedia(model);
   const items = media.items.filter((item) => model.roles[item.role]);
+  const references = new Map(promptReferences(model, media.items).map(({ item, token }) => [item.id, token]));
   if (items.length === 0) return null;
 
   return (
@@ -194,7 +209,7 @@ export function MediaStrip({ model }: { model: ModelEntry }) {
                 }}
               />
             )}
-            <span className="ohf-strip-tag">{ROLE_TAGS[item.role]}</span>
+            <span className="ohf-strip-tag" title={references.get(item.id)}>{references.get(item.id) ?? ROLE_TAGS[item.role]}</span>
           </span>
           <button
             type="button"

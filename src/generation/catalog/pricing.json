@@ -1017,6 +1017,31 @@
    ]
   }
  ],
+ "bytedance/seedance-2.5/draft-to-video": [
+  {
+   "role": "output",
+   "unit": "video_output_token",
+   "per": 1000000,
+   "tiers": [
+    {
+     "spec": {
+      "resolution": "1080p",
+      "mode": "standard",
+      "variant": "with-video-input"
+     },
+     "usd": 7.35
+    },
+    {
+     "spec": {
+      "resolution": "1080p",
+      "mode": "standard",
+      "variant": "no-video-input"
+     },
+     "usd": 12.285
+    }
+   ]
+  }
+ ],
  "bytedance/seedance-2.5/image-to-video": [
   {
    "role": "output",
@@ -1034,6 +1059,13 @@
      "spec": {
       "resolution": "720p",
       "mode": "standard"
+     },
+     "usd": 11.235
+    },
+    {
+     "spec": {
+      "resolution": "480p",
+      "mode": "draft"
      },
      "usd": 11.235
     },
@@ -1071,6 +1103,14 @@
     },
     {
      "spec": {
+      "resolution": "480p",
+      "mode": "draft",
+      "variant": "with-video-input"
+     },
+     "usd": 6.72
+    },
+    {
+     "spec": {
       "resolution": "1080p",
       "mode": "standard",
       "variant": "with-video-input"
@@ -1089,6 +1129,14 @@
      "spec": {
       "resolution": "720p",
       "mode": "standard",
+      "variant": "no-video-input"
+     },
+     "usd": 11.235
+    },
+    {
+     "spec": {
+      "resolution": "480p",
+      "mode": "draft",
       "variant": "no-video-input"
      },
      "usd": 11.235
@@ -1121,6 +1169,13 @@
      "spec": {
       "resolution": "720p",
       "mode": "standard"
+     },
+     "usd": 11.235
+    },
+    {
+     "spec": {
+      "resolution": "480p",
+      "mode": "draft"
      },
      "usd": 11.235
     },
@@ -2576,6 +2631,66 @@
    ]
   }
  ],
+ "ideogram/ideogram-4.5/image-to-image": [
+  {
+   "role": "output",
+   "unit": "image",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {
+      "quality": "very_low"
+     },
+     "usd": 0.0072
+    },
+    {
+     "spec": {
+      "quality": "low"
+     },
+     "usd": 0.027
+    },
+    {
+     "spec": {
+      "quality": "medium"
+     },
+     "usd": 0.054
+    },
+    {
+     "spec": {
+      "quality": "high"
+     },
+     "usd": 0.198
+    }
+   ]
+  }
+ ],
+ "ideogram/ideogram-4.5/text-to-image": [
+  {
+   "role": "output",
+   "unit": "image",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {
+      "quality": "low"
+     },
+     "usd": 0.027
+    },
+    {
+     "spec": {
+      "quality": "medium"
+     },
+     "usd": 0.054
+    },
+    {
+     "spec": {
+      "quality": "high"
+     },
+     "usd": 0.09
+    }
+   ]
+  }
+ ],
  "ideogram/p-image/text-to-image": [
   {
    "role": "output",
@@ -3739,6 +3854,32 @@
    ]
   }
  ],
+ "pika/video-compose/compose-video": [
+  {
+   "role": "output",
+   "unit": "output_second",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {},
+     "usd": 0.0002
+    }
+   ]
+  }
+ ],
+ "pika/video-merge/merge-videos": [
+  {
+   "role": "output",
+   "unit": "second",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {},
+     "usd": 0.0002
+    }
+   ]
+  }
+ ],
  "qwen/qwen3.8-flash": [
   {
    "role": "input",
@@ -3887,6 +4028,45 @@
    ]
   }
  ],
+ "sync/lipsync-2-pro/avatar": [
+  {
+   "role": "output",
+   "unit": "minute",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {},
+     "usd": 5.229
+    }
+   ]
+  }
+ ],
+ "sync/lipsync-2/avatar": [
+  {
+   "role": "output",
+   "unit": "minute",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {},
+     "usd": 3.15
+    }
+   ]
+  }
+ ],
+ "sync/sync-3/avatar": [
+  {
+   "role": "output",
+   "unit": "minute",
+   "per": 1,
+   "tiers": [
+    {
+     "spec": {},
+     "usd": 8.379
+    }
+   ]
+  }
+ ],
  "tencent/hy4-preview": [
   {
    "role": "input",
@@ -3994,44 +4174,130 @@
  "topaz/topaz-video-upscale/video-upscale": [
   {
    "role": "output",
-   "unit": "second",
-   "per": 1,
+   "unit": "output_megapixel",
+   "per": 1000,
    "tiers": [
     {
      "spec": {
       "variant": "proteus"
      },
-     "usd": 0.076
-    },
-    {
-     "spec": {
-      "variant": "starlight-fast-2"
-     },
-     "usd": 0.189
+     "usd": 0.1938
     },
     {
      "spec": {
       "variant": "starlight-mini"
      },
-     "usd": 0.378
+     "usd": 0
     },
     {
      "spec": {
       "variant": "starlight-hq"
      },
-     "usd": 0.378
+     "usd": 0
     },
     {
      "spec": {
       "variant": "starlight-sharp"
      },
-     "usd": 0.378
+     "usd": 0
+    },
+    {
+     "spec": {
+      "variant": "starlight-fast-2"
+     },
+     "usd": 0
     },
     {
      "spec": {
       "variant": "starlight-precise-2.6"
      },
-     "usd": 0.378
+     "usd": 0
+    }
+   ]
+  },
+  {
+   "role": "output",
+   "unit": "output_frame_1080p",
+   "per": 1000,
+   "tiers": [
+    {
+     "spec": {
+      "variant": "starlight-fast-2"
+     },
+     "usd": 1.92
+    },
+    {
+     "spec": {
+      "variant": "starlight-mini"
+     },
+     "usd": 3.84
+    },
+    {
+     "spec": {
+      "variant": "starlight-hq"
+     },
+     "usd": 3.84
+    },
+    {
+     "spec": {
+      "variant": "starlight-sharp"
+     },
+     "usd": 3.84
+    },
+    {
+     "spec": {
+      "variant": "starlight-precise-2.6"
+     },
+     "usd": 3.84
+    },
+    {
+     "spec": {
+      "variant": "proteus"
+     },
+     "usd": 0
+    }
+   ]
+  },
+  {
+   "role": "output",
+   "unit": "output_frame_4k",
+   "per": 1000,
+   "tiers": [
+    {
+     "spec": {
+      "variant": "starlight-fast-2"
+     },
+     "usd": 4.1954
+    },
+    {
+     "spec": {
+      "variant": "starlight-mini"
+     },
+     "usd": 8.3907
+    },
+    {
+     "spec": {
+      "variant": "starlight-hq"
+     },
+     "usd": 8.3907
+    },
+    {
+     "spec": {
+      "variant": "starlight-sharp"
+     },
+     "usd": 8.3907
+    },
+    {
+     "spec": {
+      "variant": "starlight-precise-2.6"
+     },
+     "usd": 8.3907
+    },
+    {
+     "spec": {
+      "variant": "proteus"
+     },
+     "usd": 0
     }
    ]
   }

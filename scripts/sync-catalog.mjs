@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildPricing } from "./build-pricing.mjs";
+import { buildRequestSchemas } from "./build-request-schemas.mjs";
 
 const BASE = process.env.PIKA_API_BASE_URL || "https://api.dev.pika.art";
 const out = join(dirname(fileURLToPath(import.meta.url)), "pika-catalog");
@@ -26,3 +27,4 @@ for (const api of apis) {
 }
 console.log(`${apis.length} operations written to scripts/pika-catalog`);
 console.log(`${buildPricing()} operations priced in src/generation/catalog/pricing.json`);
+console.log(`${buildRequestSchemas()} request schemas written to src/generation/request-schemas.json`);

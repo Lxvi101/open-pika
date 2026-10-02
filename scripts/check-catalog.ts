@@ -1,6 +1,7 @@
 /* Checks catalog files against the platform's own input schemas.
 
-   pnpm check:catalog                          every file, full coverage
+   pnpm check:catalog                          every file, snapshot coverage
+   pnpm check:catalog -- --live                also compare snapshots with the live index
    pnpm check:catalog src/.../video/kling.ts   one file
    ... --expect kling/video                    and that it covers that vendor's
                                                whole category
@@ -29,6 +30,8 @@ const apis = new Map<string, Api>(
 );
 
 const args = process.argv.slice(2);
+const live = args.includes("--live");
+if (live) args.splice(args.indexOf("--live"), 1);
 const expectAt = args.indexOf("--expect");
 const expect = expectAt >= 0 ? args.splice(expectAt, 2)[1]!.split(",") : null;
 const files = args.length ? args : [join(here, "../src/generation/catalog/index.ts")];
@@ -36,6 +39,17 @@ const files = args.length ? args : [join(here, "../src/generation/catalog/index.
 const errors: string[] = [];
 const warnings: string[] = [];
 const models: ModelEntry[] = [];
+
+if (live) {
+  const base = process.env.PIKA_API_BASE_URL || "https://api.dev.pika.art";
+  const response = await fetch(`${base}/catalog/apis`);
+  if (!response.ok) throw new Error(`Live catalog: ${response.status}`);
+  const index = (await response.json()) as { apis: Api[] };
+  const local = new Set(apis.keys());
+  const missing = index.apis.filter((api) => !local.has(api.api_id));
+  for (const api of missing) errors.push(`expanded snapshot missing live operation: ${api.api_id}`);
+  console.log(`Live catalog: ${index.apis.length} records, ${missing.length} missing expanded snapshots`);
+}
 
 for (const file of files) {
   const loaded = (await import(pathToFileURL(resolve(file)).href)) as Record<string, unknown>;

@@ -12,3 +12,8 @@ tsconfig.tsbuildinfo
 
 .env*
 .idea
+
+# Local verified webhook receipts contain private request data.
+.data/
+
+!.env.example

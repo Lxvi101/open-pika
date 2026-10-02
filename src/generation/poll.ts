@@ -12,9 +12,17 @@ const MAX_MISSES = 3;
 
 type Waiter = {
   deadline: number;
+  failures: number;
+  retryAt?: number;
   resolve: (status: GenerationStatus) => void;
   reject: (reason: Error) => void;
 };
+
+/** The upstream job may still be running; only local tracking has paused. */
+export class TrackingPausedError extends Error {
+  readonly code = "tracking_paused";
+  constructor(message: string) { super(message); this.name = "TrackingPausedError"; }
+}
 
 const waiting = new Map<string, Waiter>();
 const inflight = new Map<string, Promise<GenerationStatus>>();
@@ -35,7 +43,8 @@ export function watchRequest(
   if (existing) return existing;
   const promise = new Promise<GenerationStatus>((resolve, reject) => {
     waiting.set(requestId, {
-      deadline: opts?.deadline ?? Date.now() + POLL_DEADLINE_MS,
+      deadline: opts?.deadline && opts.deadline > Date.now() ? opts.deadline : Date.now() + POLL_DEADLINE_MS,
+      failures: 0,
       resolve: (status) => {
         inflight.delete(requestId);
         resolve(status);
@@ -71,7 +80,10 @@ async function round(): Promise<void> {
   timer = null;
   polling = true;
   try {
-    const results = await getGenerationStatuses({ requestIds: [...waiting.keys()] });
+    const requestIds = [...waiting.entries()]
+      .filter(([, waiter]) => waiter.retryAt === undefined || Date.now() >= waiter.retryAt)
+      .map(([requestId]) => requestId);
+    const results = requestIds.length ? await getGenerationStatuses({ requestIds }) : [];
     misses = 0;
     for (const result of results) deliver(result);
     sweep();
@@ -88,29 +100,40 @@ function deliver(result: StatusResult): void {
   const waiter = waiting.get(result.requestId);
   if (!waiter) return;
   if ("error" in result) {
-    waiting.delete(result.requestId);
-    waiter.reject(new Error(result.error));
+    waiter.failures += 1;
+    const transient = !result.error.status || result.error.status === 408 || result.error.status === 429 || result.error.status >= 500;
+    const maxRetries = transient ? 4 : 0;
+    if (waiter.failures > maxRetries) pause(result.requestId, result.error.message);
+    else if (result.error.retryAfter !== undefined && result.error.retryAfter > 0) {
+      waiter.retryAt = Date.now() + Math.min(result.error.retryAfter, 600) * 1000;
+    }
     return;
   }
+  waiter.failures = 0;
+  waiter.retryAt = undefined;
   if (!TERMINAL.has(result.status.status)) return;
   waiting.delete(result.requestId);
   waiter.resolve(result.status);
 }
 
-/* A run the platform never finishes would otherwise hold its skeleton open for
-   the rest of the session. */
+/* Stop local polling on deadline while preserving the upstream running state. */
 function sweep(): void {
   const now = Date.now();
   for (const [requestId, waiter] of [...waiting]) {
     if (now <= waiter.deadline) continue;
-    waiting.delete(requestId);
-    waiter.reject(new Error("timed out waiting for the platform"));
+    pause(requestId, "Tracking paused after the status deadline; resume to keep checking this run.");
   }
 }
 
+function pause(requestId: string, message: string): void {
+  const waiter = waiting.get(requestId);
+  if (!waiter) return;
+  waiting.delete(requestId);
+  waiter.reject(new TrackingPausedError(message));
+}
+
 function settleAll(reason: Error): void {
-  const waiters = [...waiting.values()];
-  waiting.clear();
+  const ids = [...waiting.keys()];
   misses = 0;
-  for (const waiter of waiters) waiter.reject(reason);
+  for (const requestId of ids) pause(requestId, reason.message);
 }
